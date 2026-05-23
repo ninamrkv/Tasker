@@ -1481,22 +1481,6 @@ function deleteReminder(id){
   state.reminders=state.reminders.filter(r=>r.id!==id);save();renderRemindersPanel();
 }
 
-function importBulkReminders(){
-  const raw=document.getElementById('rem-bulk')?.value||'';
-  const lines=raw.trim().split('\n').filter(Boolean);let added=0;
-  lines.forEach(line=>{
-    const m=line.match(/^(\d{4}-\d{2}-\d{2})\s+(.+)$/);
-    if(m){
-      const[,date,text]=m;
-      const emoji=text.match(/\p{Emoji}/u)?.[0]||'📌';
-      const type=text.toLowerCase().includes('birthday')?'bday':text.toLowerCase().includes('day')?'holiday':'custom';
-      state.reminders.push({id:uid(),text:text.trim(),date,emoji,type});added++;
-    }
-  });
-  if(added){save();showNotif(`Added ${added} reminder${added===1?'':'s'}`);renderRemindersPanel();}
-  else showNotif('No valid lines. Format: YYYY-MM-DD Event name');
-}
-
 // ── DIRECTIONS SETTINGS ───────────────────────────────────────────────────────
 const PALETTE=['#3B82F6','#22C55E','#F97316','#A855F7','#EC4899','#EAB308','#EF4444','#0EA5E9','#6B7280','#14B8A6','#8B5CF6','#F43F5E','#10B981','#F59E0B','#6366F1'];
 
