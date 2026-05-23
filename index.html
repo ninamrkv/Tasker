@@ -99,6 +99,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .li-cb.li-done::after{content:'';width:7px;height:4px;border-left:1.5px solid #fff;border-bottom:1.5px solid #fff;transform:rotate(-45deg) translateY(-1px);display:block}
 .li-text{font-size:11px;color:var(--gray-700);line-height:1.5;flex:1;min-width:0;outline:none}
 .li-text.li-done-text{text-decoration:line-through;color:var(--gray-400)}
+.li-heading-text{font-size:11.5px;font-weight:600;color:var(--gray-800) !important;letter-spacing:.01em}
+.li-type-btn{opacity:0;background:none;border:none;cursor:pointer;color:var(--gray-300);font-size:9px;padding:0 1px;flex-shrink:0;line-height:1;transition:opacity .1s,color .1s;margin-top:2px}
+.list-item:hover .li-type-btn{opacity:1}
+.li-type-btn:hover{color:var(--gray-600) !important}
 .li-add{font-size:11px;color:var(--gray-400);padding:3px 0;cursor:pointer;display:flex;align-items:center;gap:4px}
 .li-add:hover{color:var(--gray-600)}
 .add-list-btn{border:1px dashed var(--gray-300);border-radius:8px;padding:12px;display:flex;align-items:center;justify-content:center;gap:6px;font-size:12px;color:var(--gray-400);cursor:pointer;min-height:60px}
@@ -851,7 +855,19 @@ function renderArchive(){
 
 // ── LISTS ─────────────────────────────────────────────────────────────────────
 function renderListItem(listId, item){
+  const isH=item.type==='heading';
+  if(isH){
+    return`<div class="list-item" id="li-${item.id}" style="padding:5px 0 1px">
+      <button class="li-type-btn" onclick="toggleListItemType('${listId}','${item.id}')" title="Convert to task">☰</button>
+      <span class="li-text li-heading-text" contenteditable="true"
+        onblur="editListItem('${listId}','${item.id}',this.innerHTML)"
+        onkeydown="liKeyDown(event,'${listId}','${item.id}')"
+        onpaste="liPaste(event,'${listId}','${item.id}')"
+      >${item.text||''}</span>
+    </div>`;
+  }
   return`<div class="list-item" id="li-${item.id}">
+    <button class="li-type-btn" onclick="toggleListItemType('${listId}','${item.id}')" title="Convert to heading">T</button>
     <div class="li-cb ${item.done?'li-done':''}" onclick="toggleListItem('${listId}','${item.id}')"></div>
     <span class="li-text ${item.done?'li-done-text':''}" contenteditable="true"
       onblur="editListItem('${listId}','${item.id}',this.textContent)"
@@ -986,7 +1002,23 @@ function toggleListItem(listId,itemId){
 function editListItem(listId,itemId,text){
   const l=state.lists.find(x=>x.id===listId);if(!l)return;
   const item=l.items.find(x=>x.id===itemId);if(!item)return;
-  item.text=text.trim();save();
+  item.text=item.type==='heading'?text:text.trim();save();
+}
+
+function toggleListItemType(listId,itemId){
+  const l=state.lists.find(x=>x.id===listId);if(!l)return;
+  const item=l.items.find(x=>x.id===itemId);if(!item)return;
+  item.type=item.type==='heading'?'task':'heading';
+  if(item.type==='heading')item.done=false;
+  save();
+  const el=document.getElementById('li-'+itemId);
+  if(el){
+    const tmp=document.createElement('div');
+    tmp.innerHTML=renderListItem(listId,item);
+    const newEl=tmp.firstElementChild;
+    el.replaceWith(newEl);
+    newEl.querySelector('.li-text')?.focus();
+  }
 }
 
 // ── TASK ACTIONS ──────────────────────────────────────────────────────────────
