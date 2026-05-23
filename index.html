@@ -201,20 +201,33 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .mm-input{width:100%;border:1px solid var(--gray-200);border-radius:6px;padding:7px 10px;font-size:13px;outline:none;font-family:inherit}
 .mm-input:focus{border-color:var(--blue)}
 .notif-toast{position:fixed;bottom:24px;right:24px;background:#111827;color:#fff;padding:10px 16px;border-radius:8px;font-size:12px;z-index:9999;pointer-events:none;transition:opacity .2s}
-/* NOTES SECTION */
-.notes-section{padding:0 24px 32px}
-.notes-body{background:var(--gray-50);border:1px solid var(--gray-200);border-radius:8px;padding:12px}
-.notes-links{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;min-height:0}
-.link-chip{display:inline-flex;align-items:center;gap:5px;background:#fff;border:1px solid var(--gray-200);border-radius:20px;padding:3px 10px 3px 7px;font-size:11px;color:var(--gray-700);text-decoration:none;cursor:pointer;transition:background .1s;max-width:260px;overflow:hidden}
-.link-chip:hover{background:#f0f4ff;border-color:#93c5fd;color:#1d4ed8}
-.link-chip-favicon{width:14px;height:14px;border-radius:2px;flex-shrink:0}
-.link-chip-text{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0}
-.link-chip-del{background:none;border:none;cursor:pointer;color:var(--gray-400);font-size:13px;line-height:1;padding:0 0 0 2px;flex-shrink:0}
-.link-chip-del:hover{color:#dc2626}
-.add-link-btn{background:none;border:1px dashed var(--gray-300);border-radius:20px;padding:3px 12px;font-size:11px;color:var(--gray-400);cursor:pointer}
-.add-link-btn:hover{border-color:var(--blue);color:var(--blue);background:#f0f4ff}
-.notes-textarea{width:100%;border:none;background:transparent;font-size:12px;color:var(--gray-700);resize:none;outline:none;font-family:inherit;line-height:1.6;min-height:60px}
-.notes-textarea::placeholder{color:var(--gray-300)}
+/* TWO-COLUMN BELOW CALENDAR */
+.below-cal-grid{display:grid;grid-template-columns:1fr 1.6fr;gap:20px;padding:0 24px 32px;align-items:start}
+.below-col{}
+
+/* NOTES EDITOR */
+.notes-section{}
+.notes-editor-wrap{border:1px solid var(--gray-200);border-radius:8px;overflow:hidden;background:#fff}
+.notes-toolbar{display:flex;align-items:center;gap:1px;padding:5px 8px;border-bottom:1px solid var(--gray-100);background:var(--gray-50);flex-wrap:wrap}
+.ntb{background:none;border:none;cursor:pointer;width:24px;height:24px;border-radius:4px;font-size:12px;color:var(--gray-600);display:flex;align-items:center;justify-content:center}
+.ntb b{font-size:13px}
+.ntb:hover{background:var(--gray-200)}
+.ntb-sep{width:1px;height:14px;background:var(--gray-200);margin:0 3px;flex-shrink:0}
+.notes-editor{padding:10px 12px;min-height:180px;outline:none;font-size:12px;color:var(--gray-700);line-height:1.75;font-family:inherit;word-break:break-word}
+.notes-editor:empty::before{content:'Add notes, links, contacts...';color:var(--gray-300);pointer-events:none;display:block}
+.notes-editor a{color:#2563eb;text-decoration:underline;cursor:pointer}
+.notes-editor a:hover{color:#1d4ed8}
+.notes-editor ul,.notes-editor ol{padding-left:18px;margin:2px 0}
+.notes-editor li{margin:1px 0}
+/* inline URL chip */
+.url-chip{display:inline-flex;align-items:center;gap:4px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:14px;padding:1px 8px 1px 5px;font-size:11px;color:#1d4ed8;text-decoration:none !important;cursor:pointer;vertical-align:middle;max-width:220px;white-space:nowrap;overflow:hidden;margin:0 1px}
+.url-chip:hover{background:#dbeafe}
+.url-chip img{width:13px;height:13px;border-radius:2px;flex-shrink:0}
+.url-chip span{overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0}
+.url-chip .chip-x{background:none;border:none;cursor:pointer;color:#93c5fd;font-size:14px;line-height:1;padding:0;flex-shrink:0;margin-left:1px;vertical-align:middle}
+.url-chip .chip-x:hover{color:#1d4ed8}
+/* lists section vertical */
+.lists-grid-v{display:flex;flex-direction:column;gap:10px}
 ::-webkit-scrollbar{width:4px;height:4px}
 ::-webkit-scrollbar-track{background:transparent}
 ::-webkit-scrollbar-thumb{background:var(--gray-300);border-radius:4px}
@@ -424,61 +437,133 @@ function showNotif(msg){
   setTimeout(()=>{el.style.opacity='0';setTimeout(()=>el.remove(),250);},2500);
 }
 
-// ── NOTES ─────────────────────────────────────────────────────────────────────
-function getWsNotes(wsId){
-  if(!state.wsNotes[wsId])state.wsNotes[wsId]={text:'',links:[]};
-  return state.wsNotes[wsId];
-}
+// ── NOTES RICH EDITOR ─────────────────────────────────────────────────────────
+function getNotes(wsId){if(!state.wsNotes[wsId])state.wsNotes[wsId]={html:''};return state.wsNotes[wsId];}
 function getDomain(url){try{return new URL(url).hostname.replace(/^www\./,'');}catch(e){return url.slice(0,40);}}
 function isUrl(s){try{return/^https?:\/\//i.test(s)&&!!new URL(s);}catch(e){return false;}}
+function isEmail(s){return/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s.trim());}
+
+function makeChipHtml(url, label){
+  const domain=getDomain(url);
+  const display=escHtml(label&&label.trim()?label.trim():domain);
+  const fav=`https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=32`;
+  return`<a href="${escAttr(url)}" target="_blank" rel="noopener" class="url-chip" contenteditable="false">`+
+    `<img src="${fav}" onerror="this.style.display='none'"><span>${display}</span>`+
+    `<button class="chip-x" onclick="event.preventDefault();event.stopPropagation();this.closest('.url-chip').remove();saveNoteContent(currentWsId())">×</button>`+
+    `</a>`;
+}
+
+function currentWsId(){return state.activeWs;}
 
 function renderNotesSection(wsId){
-  const notes=getWsNotes(wsId);
-  const chips=notes.links.map(l=>{
-    const domain=getDomain(l.url);
-    const fav=`https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=32`;
-    return`<a href="${escAttr(l.url)}" target="_blank" rel="noopener" class="link-chip" title="${escAttr(l.url)}">
-      <img class="link-chip-favicon" src="${fav}" onerror="this.style.display='none'">
-      <span class="link-chip-text">${escHtml(l.title||domain)}</span>
-      <button class="link-chip-del" onclick="event.preventDefault();event.stopPropagation();removeNoteLink('${wsId}','${l.id}')">×</button>
-    </a>`;
-  }).join('');
+  const notes=getNotes(wsId);
   return`<div class="notes-section">
     <div class="section-title"><i class="ti ti-pencil"></i> Notes</div>
-    <div class="notes-body">
-      <div class="notes-links" id="notes-links-${wsId}">
-        ${chips}
-        <button class="add-link-btn" onclick="addNoteLink('${wsId}')">+ Add link</button>
+    <div class="notes-editor-wrap">
+      <div class="notes-toolbar">
+        <button class="ntb" onclick="nfmt('bold')" title="Bold"><b>B</b></button>
+        <button class="ntb" onclick="nfmt('italic')" title="Italic"><i style="font-style:italic;font-size:13px">I</i></button>
+        <button class="ntb" onclick="nfmt('underline')" title="Underline"><u style="font-size:13px">U</u></button>
+        <div class="ntb-sep"></div>
+        <button class="ntb" onclick="nfmt('insertUnorderedList')" title="Bullet list"><i class="ti ti-list"></i></button>
+        <button class="ntb" onclick="nfmt('insertOrderedList')" title="Numbered list"><i class="ti ti-list-numbers"></i></button>
+        <button class="ntb" onclick="insertCheckbox()" title="Checkbox"><i class="ti ti-checkbox"></i></button>
+        <div class="ntb-sep"></div>
+        <button class="ntb" onclick="addInlineLink('${wsId}')" title="Link selected text"><i class="ti ti-link"></i></button>
+        <button class="ntb" onclick="insertUrlChipFromBtn('${wsId}')" title="Insert URL chip"><i class="ti ti-paperclip"></i></button>
       </div>
-      <textarea class="notes-textarea" id="notes-text-${wsId}"
-        placeholder="Notes, contacts, context..."
-        onblur="saveNoteText('${wsId}',this.value)">${escHtml(notes.text)}</textarea>
+      <div class="notes-editor" id="notes-ed-${wsId}" contenteditable="true"
+        data-placeholder="Notes, links, contacts..."
+        onblur="saveNoteContent('${wsId}')"
+        oninput="onNoteInput('${wsId}')"
+      >${notes.html||''}</div>
     </div>
   </div>`;
 }
 
-function addNoteLink(wsId){
+function nfmt(cmd){document.execCommand(cmd,false,null);document.getElementById('notes-ed-'+state.activeWs)?.focus();}
+
+function insertCheckbox(){
+  document.execCommand('insertHTML',false,
+    '<span contenteditable="false" style="user-select:none"><input type="checkbox" class="notes-checkbox" style="margin-right:4px;cursor:pointer;accent-color:#3B82F6" onclick="saveNoteContent(\''+state.activeWs+'\')"></span>&#8203;');
+  document.getElementById('notes-ed-'+state.activeWs)?.focus();
+}
+
+function addInlineLink(wsId){
+  const sel=window.getSelection();
+  const selectedText=sel?sel.toString().trim():'';
   showMiniModal({title:'Add link',fields:[
     {id:'url',placeholder:'https://docs.google.com/...'},
-    {id:'title',label:'Label (optional)',placeholder:'Doc name, short description...'},
-  ],submitLabel:'Add',onSubmit:vals=>{
-    const url=vals.url.trim();
-    if(!url)return;
+    {id:'label',label:'Label'+(selectedText?` (selected: "${selectedText.slice(0,30)}")`:''),value:selectedText,placeholder:'Link text...'},
+  ],submitLabel:'Link',onSubmit:vals=>{
+    const url=vals.url.trim();if(!url)return;
     const fullUrl=isUrl(url)?url:'https://'+url;
-    const notes=getWsNotes(wsId);
-    notes.links.push({id:uid(),url:fullUrl,title:vals.title.trim()||''});
-    save();render();
+    const label=vals.label.trim()||getDomain(fullUrl);
+    // If text was selected, wrap it; otherwise insert new link
+    document.getElementById('notes-ed-'+wsId)?.focus();
+    if(selectedText){
+      document.execCommand('createLink',false,fullUrl);
+      document.querySelectorAll('#notes-ed-'+wsId+' a[href="'+fullUrl+'"]').forEach(a=>{
+        a.target='_blank';a.rel='noopener';
+      });
+    } else {
+      document.execCommand('insertHTML',false,`<a href="${fullUrl}" target="_blank" rel="noopener">${label}</a>`);
+    }
+    saveNoteContent(wsId);
   }});
 }
 
-function removeNoteLink(wsId,linkId){
-  const notes=getWsNotes(wsId);
-  notes.links=notes.links.filter(l=>l.id!==linkId);
-  save();render();
+function insertUrlChipFromBtn(wsId){
+  showMiniModal({title:'Insert link chip',fields:[
+    {id:'url',placeholder:'https://docs.google.com/...'},
+    {id:'label',label:'Name (shown on chip)',placeholder:'e.g. "WASH Report Q2"'},
+  ],submitLabel:'Insert',onSubmit:vals=>{
+    const url=vals.url.trim();if(!url)return;
+    const fullUrl=isUrl(url)?url:'https://'+url;
+    document.getElementById('notes-ed-'+wsId)?.focus();
+    document.execCommand('insertHTML',false,makeChipHtml(fullUrl,vals.label)+' ');
+    saveNoteContent(wsId);
+  }});
 }
 
-function saveNoteText(wsId,text){
-  getWsNotes(wsId).text=text;save();
+function saveNoteContent(wsId){
+  const el=document.getElementById('notes-ed-'+wsId);
+  if(!el)return;
+  getNotes(wsId).html=el.innerHTML;save();
+}
+
+// Auto-detect paste: URLs → chip, emails → mailto link
+function setupNotesEditor(wsId){
+  const el=document.getElementById('notes-ed-'+wsId);
+  if(!el)return;
+  el.addEventListener('paste',e=>{
+    const text=(e.clipboardData||window.clipboardData).getData('text/plain').trim();
+    if(isUrl(text)){
+      e.preventDefault();
+      // Ask for chip label before inserting
+      showMiniModal({title:'Name this link',fields:[
+        {id:'label',label:text.length>60?text.slice(0,60)+'…':text,placeholder:'e.g. "WASH Report Q2", "Logos doc"...'},
+      ],submitLabel:'Insert chip',onSubmit:vals=>{
+        el.focus();
+        document.execCommand('insertHTML',false,makeChipHtml(text,vals.label)+' ');
+        saveNoteContent(wsId);
+      }});
+    } else if(isEmail(text)){
+      e.preventDefault();
+      document.execCommand('insertHTML',false,`<a href="mailto:${text}" style="color:#2563eb">${text}</a>`);
+      saveNoteContent(wsId);
+    } else {
+      e.preventDefault();
+      const plain=(e.clipboardData||window.clipboardData).getData('text/plain');
+      document.execCommand('insertText',false,plain);
+    }
+  });
+}
+
+let _noteInputTimer=null;
+function onNoteInput(wsId){
+  clearTimeout(_noteInputTimer);
+  _noteInputTimer=setTimeout(()=>saveNoteContent(wsId),800);
 }
 
 // ── SIDEBAR ───────────────────────────────────────────────────────────────────
@@ -499,7 +584,7 @@ function renderSidebar(){
   html+=`<div class="sb-sec-label">Workspaces</div>`;
   state.workspaces.forEach(ws=>{
     const active=state.activeWs===ws.id?'active':'';
-    html+=`<div class="sb-item ${active}" onclick="setWorkspace('${ws.id}')"><span class="sb-ws-emoji">${ws.emoji||'📅'}</span> ${ws.name}</div>`;
+    html+=`<div class="sb-item ${active}" onclick="setWorkspace('${ws.id}')" ondblclick="renameWsSidebar('${ws.id}')" title="Double-click to rename"><i class="ti ti-layout-board" style="font-size:13px;flex-shrink:0"></i> ${ws.name}</div>`;
   });
   el.innerHTML=html;
   document.getElementById('user-avatar').textContent=state.userEmoji||'👤';
@@ -565,15 +650,18 @@ function renderWeekly(){
   html+=`</div></div>`;
 
   const lists=state.lists.filter(l=>l.workspaceId===state.activeWs);
-  html+=`<div class="page-pad">
-    <div class="section-title"><i class="ti ti-layout-grid"></i> Lists</div>
-    <div class="lists-grid">
-      ${lists.map(l=>renderListCard(l)).join('')}
-      <div class="add-list-btn" onclick="addList()"><i class="ti ti-plus" style="font-size:14px"></i> New list</div>
+  html+=`<div class="below-cal-grid">
+    <div class="below-col">
+      <div class="section-title" style="margin-bottom:10px"><i class="ti ti-layout-grid"></i> Lists</div>
+      <div class="lists-grid-v">
+        ${lists.map(l=>renderListCard(l)).join('')}
+        <div class="add-list-btn" onclick="addList()"><i class="ti ti-plus" style="font-size:14px"></i> New list</div>
+      </div>
     </div>
+    <div class="below-col">${renderNotesSection(state.activeWs)}</div>
   </div>`;
-  html+=renderNotesSection(state.activeWs);
   document.getElementById('content').innerHTML=html;
+  setTimeout(()=>setupNotesEditor(state.activeWs),0);
 }
 
 function renderTaskCard(t){
@@ -1056,7 +1144,13 @@ function saveDirections(){
 
 // ── WORKSPACE ─────────────────────────────────────────────────────────────────
 function setWorkspace(id){state.activeWs=id;save();render();}
-function renameWs(name){const ws=state.workspaces.find(w=>w.id===state.activeWs);if(ws){ws.name=name.trim()||ws.name;save();}}
+function renameWs(name){const ws=state.workspaces.find(w=>w.id===state.activeWs);if(ws){ws.name=name.trim()||ws.name;save();renderSidebar();}}
+function renameWsSidebar(id){
+  const ws=state.workspaces.find(w=>w.id===id);if(!ws)return;
+  showMiniModal({title:'Rename workspace',fields:[{id:'name',value:ws.name,placeholder:'Workspace name...'}],submitLabel:'Save',onSubmit:vals=>{
+    ws.name=vals.name.trim()||ws.name;save();render();
+  }});
+}
 
 // ── NAVIGATION ────────────────────────────────────────────────────────────────
 function setTab(tab){state.activeTab=tab;save();render();}
