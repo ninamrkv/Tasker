@@ -566,17 +566,13 @@ function setupNotesEditor(wsId){
     const text=(e.clipboardData||window.clipboardData).getData('text/plain').trim();
     if(isUrl(text)){
       e.preventDefault();
-      // Ask for chip label before inserting
-      showMiniModal({title:'Name this link',fields:[
-        {id:'label',label:text.length>60?text.slice(0,60)+'…':text,placeholder:'e.g. "WASH Report Q2", "Logos doc"...'},
-      ],submitLabel:'Insert chip',onSubmit:vals=>{
-        el.focus();
-        document.execCommand('insertHTML',false,makeChipHtml(text,vals.label)+' ');
-        saveNoteContent(wsId);
-      }});
+      // Insert as plain blue link inline (use 📎 button for chips)
+      const display=text.length>70?text.slice(0,70)+'…':text;
+      document.execCommand('insertHTML',false,`<a href="${text}" target="_blank" rel="noopener">${display}</a>`);
+      saveNoteContent(wsId);
     } else if(isEmail(text)){
       e.preventDefault();
-      document.execCommand('insertHTML',false,`<a href="mailto:${text}" style="color:#2563eb">${text}</a>`);
+      document.execCommand('insertHTML',false,`<a href="mailto:${text}">${text}</a>`);
       saveNoteContent(wsId);
     } else {
       e.preventDefault();
@@ -753,6 +749,17 @@ function renderBoard(){
     <div class="page-title">By Direction</div><div class="page-sub">Tasks grouped by direction</div>
   </div><div class="board-grid" id="board-grid"></div>`;
   let html='';
+  // Direction columns
+  state.directions.forEach(dir=>{
+    const tasks=state.tasks.filter(t=>t.directionId===dir.id&&t.workspaceId===state.activeWs&&t.status!=='done');
+    html+=`<div class="board-col"><div class="board-col-hdr">
+      <div class="board-col-dot" style="background:${dir.color}"></div>
+      <div class="board-col-name" style="color:${dir.color};cursor:pointer" onclick="renameDirInline('${dir.id}')" title="Click to rename">${dir.name}</div>
+      <span class="board-col-count">${tasks.length}</span>
+    </div><div class="board-cards">${tasks.map(t=>renderTaskCard(t)).join('')}</div>
+    <div class="board-add"><button class="board-add-btn" onclick="openAddTask(null,'${dir.id}')"><i class="ti ti-plus" style="font-size:10px"></i> Add</button></div></div>`;
+  });
+  // No direction — always last
   const noDirTasks=state.tasks.filter(t=>!t.directionId&&t.workspaceId===state.activeWs&&t.status!=='done');
   if(noDirTasks.length){
     html+=`<div class="board-col"><div class="board-col-hdr">
@@ -762,16 +769,36 @@ function renderBoard(){
     </div><div class="board-cards">${noDirTasks.map(t=>renderTaskCard(t)).join('')}</div>
     <div class="board-add"><button class="board-add-btn" onclick="openAddTask(null,'')"><i class="ti ti-plus" style="font-size:10px"></i> Add</button></div></div>`;
   }
-  state.directions.forEach(dir=>{
-    const tasks=state.tasks.filter(t=>t.directionId===dir.id&&t.workspaceId===state.activeWs&&t.status!=='done');
-    html+=`<div class="board-col"><div class="board-col-hdr">
-      <div class="board-col-dot" style="background:${dir.color}"></div>
-      <div class="board-col-name" style="color:${dir.color}">${dir.name}</div>
-      <span class="board-col-count">${tasks.length}</span>
-    </div><div class="board-cards">${tasks.map(t=>renderTaskCard(t)).join('')}</div>
-    <div class="board-add"><button class="board-add-btn" onclick="openAddTask(null,'${dir.id}')"><i class="ti ti-plus" style="font-size:10px"></i> Add</button></div></div>`;
-  });
+  // Add new direction card
+  html+=`<div class="board-col" onclick="addDirectionFromBoard()" style="background:none;border:2px dashed var(--gray-200);cursor:pointer;display:flex;align-items:center;justify-content:center;min-height:80px;transition:border-color .15s" onmouseover="this.style.borderColor='var(--gray-400)'" onmouseout="this.style.borderColor='var(--gray-200)'">
+    <div style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--gray-400)"><i class="ti ti-plus" style="font-size:14px"></i> New direction</div>
+  </div>`;
   document.getElementById('board-grid').innerHTML=html;
+}
+
+function renameDirInline(dirId){
+  const d=state.directions.find(x=>x.id===dirId);if(!d)return;
+  showMiniModal({title:'Rename direction',fields:[
+    {id:'name',label:'Name',value:d.name,placeholder:'Direction name...'},
+    {id:'emoji',label:'Emoji',value:d.emoji||'📁',placeholder:'📁'},
+  ],submitLabel:'Save',onSubmit:vals=>{
+    d.name=vals.name.trim()||d.name;
+    d.emoji=vals.emoji.trim()||d.emoji;
+    save();render();
+  }});
+}
+
+function addDirectionFromBoard(){
+  const COLORS=['#3B82F6','#22C55E','#F97316','#A855F7','#EC4899','#EAB308','#EF4444','#0EA5E9','#14B8A6','#6366F1'];
+  showMiniModal({title:'New direction',fields:[
+    {id:'name',placeholder:'Direction name...'},
+    {id:'emoji',label:'Emoji',value:'📁',placeholder:'📁'},
+  ],submitLabel:'Add',onSubmit:vals=>{
+    const name=vals.name.trim();if(!name)return;
+    const color=COLORS[state.directions.length%COLORS.length];
+    state.directions.push({id:uid(),name,color,emoji:vals.emoji.trim()||'📁',category:'work'});
+    save();render();
+  }});
 }
 
 // ── BACKLOG VIEW ──────────────────────────────────────────────────────────────
