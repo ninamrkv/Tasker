@@ -206,6 +206,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .mm-input{width:100%;border:1px solid var(--gray-200);border-radius:6px;padding:7px 10px;font-size:13px;outline:none;font-family:inherit}
 .mm-input:focus{border-color:var(--blue)}
 .notif-toast{position:fixed;bottom:24px;right:24px;background:#111827;color:#fff;padding:10px 16px;border-radius:8px;font-size:12px;z-index:9999;pointer-events:none;transition:opacity .2s}
+.recur-choice-btn{border:1px solid var(--gray-200);border-radius:8px;padding:10px 13px;cursor:pointer;transition:background .12s,border-color .12s;margin-bottom:0}
+.recur-choice-btn:hover{background:var(--gray-50);border-color:var(--gray-300)}
 /* TWO-COLUMN BELOW CALENDAR */
 .below-cal-grid{display:grid;grid-template-columns:1fr 1.6fr;gap:20px;padding:0 24px 32px;align-items:start}
 .below-col{}
@@ -338,11 +340,81 @@ function cleanupArchive(){
   if(state.tasks.length!==before)save();
 }
 
+// ── RECURRENCE HELPERS ────────────────────────────────────────────────────────
+function recurSelectHtml(currentVal,id){
+  const groups=[
+    {label:null,opts:[['','No recurrence']]},
+    {label:'Daily',opts:[['daily','Every day'],['weekdays','Every weekday (Mon–Fri)']]},
+    {label:'Weekly',opts:[
+      ['w:1','Every Monday'],['w:2','Every Tuesday'],['w:3','Every Wednesday'],
+      ['w:4','Every Thursday'],['w:5','Every Friday'],['w:6','Every Saturday'],['w:0','Every Sunday'],
+    ]},
+    {label:'Multiple days',opts:[
+      ['w:1,4','Mon & Thu'],['w:1,3','Mon & Wed'],['w:2,5','Tue & Fri'],
+      ['w:1,2,3,4,5','Weekdays'],['w:0,6','Weekends'],
+    ]},
+    {label:'Every 2 weeks',opts:[
+      ['bw:1','Biweekly · Mon'],['bw:2','Biweekly · Tue'],['bw:3','Biweekly · Wed'],
+      ['bw:4','Biweekly · Thu'],['bw:5','Biweekly · Fri'],
+    ]},
+    {label:'Monthly',opts:[
+      ['m:same','Same date each month'],['m:1','1st of month'],['m:5','5th'],
+      ['m:10','10th'],['m:15','15th'],['m:20','20th'],['m:25','25th'],['m:last','Last day'],
+    ]},
+    {label:'Every N days',opts:[
+      ['i:2','Every 2 days'],['i:3','Every 3 days'],['i:5','Every 5 days'],
+      ['i:7','Every 7 days'],['i:10','Every 10 days'],['i:14','Every 14 days'],['i:30','Every 30 days'],
+    ]},
+  ];
+  let html=`<select class="qa-select" id="${id}" style="flex:1">`;
+  groups.forEach(g=>{
+    if(!g.label){g.opts.forEach(([v,l])=>html+=`<option value="${v}"${v===currentVal?' selected':''}>${l}</option>`);}
+    else{
+      html+=`<optgroup label="${g.label}">`;
+      g.opts.forEach(([v,l])=>html+=`<option value="${v}"${v===currentVal?' selected':''}>${l}</option>`);
+      html+=`</optgroup>`;
+    }
+  });
+  return html+'</select>';
+}
+
+function recurDaysToString(recurDays){
+  if(!recurDays||!recurDays.length) return '';
+  const s=[...recurDays].sort((a,b)=>a-b);
+  if(JSON.stringify(s)==='[1,2,3,4,5]') return 'weekdays';
+  return 'w:'+s.join(',');
+}
+
+function nextRecurrenceDate(task,fromDate){
+  const r=task.recurrence||recurDaysToString(task.recurDays||[]);
+  if(!r) return null;
+  if(r==='daily') return addDays(fromDate,1);
+  if(r==='weekdays'){
+    let d=addDays(fromDate,1);for(let i=0;i<7;i++){if(![0,6].includes(dayOfWeek(d)))return d;d=addDays(d,1);}
+  }
+  if(r.startsWith('w:')){
+    const days=r.slice(2).split(',').map(Number);
+    let d=addDays(fromDate,1);for(let i=0;i<14;i++){if(days.includes(dayOfWeek(d)))return d;d=addDays(d,1);}
+  }
+  if(r.startsWith('bw:')){
+    const wd=parseInt(r.slice(3));
+    let d=addDays(fromDate,8);for(let i=0;i<7;i++){if(dayOfWeek(d)===wd)return d;d=addDays(d,1);}
+  }
+  if(r==='m:same'){const d=new Date(fromDate+'T12:00:00');d.setMonth(d.getMonth()+1);return isoDate(d);}
+  if(r==='m:last'){const d=new Date(fromDate+'T12:00:00');d.setMonth(d.getMonth()+2,0);return isoDate(d);}
+  if(r.startsWith('m:')){const md=parseInt(r.slice(2));const d=new Date(fromDate+'T12:00:00');d.setMonth(d.getMonth()+1,md);return isoDate(d);}
+  if(r.startsWith('i:')){return addDays(fromDate,parseInt(r.slice(2)));}
+  return null;
+}
+
 function autoRollover(){
   const td=today();let changed=false;
   state.tasks.forEach(t=>{
     if(t.status==='todo'&&t.scheduledDate&&t.scheduledDate<td){
-      t.status='rolled';t.scheduledDate=findNextSlot(t.scheduledDate,t);changed=true;
+      const next=nextRecurrenceDate(t,t.scheduledDate);
+      if(next){t.scheduledDate=next;} // recurring: just move forward
+      else{t.status='rolled';t.scheduledDate=findNextSlot(t.scheduledDate,t);} // one-time: rollover
+      changed=true;
     }
   });
   if(changed)save();
@@ -674,7 +746,7 @@ function renderWeekly(){
 
   dates.forEach(date=>{
     const isToday=date===td,dow=dayOfWeek(date);
-    const w=state.weather[date],rems=state.reminders.filter(r=>r.date===date);
+    const w=state.weather[date],rems=state.reminders.filter(r=>remMatchesDate(r,date));
     const tasks=state.tasks.filter(t=>t.scheduledDate===date&&t.workspaceId===state.activeWs)
       .sort((a,b)=>{const p={urgent:0,high:1,medium:2,low:3};return(p[a.type==='urgent'?'urgent':a.priority]||4)-(p[b.type==='urgent'?'urgent':b.priority]||4);});
     html+=`<div class="day-col" id="dc-${date}">
@@ -1071,6 +1143,7 @@ function openAddTask(date,dirId){
       </select>
       <select class="qa-select" id="qa-date" style="flex:1">${dateOptions}</select>
     </div>
+    <div class="qa-row">${recurSelectHtml('','qa-recur')}</div>
     <div class="qa-actions">
       <button class="btn-cancel" onclick="closeOverlay()">Cancel</button>
       <button class="btn-save" onclick="saveNewTask()">Add task</button>
@@ -1089,6 +1162,7 @@ function saveNewTask(){
     status:'todo',
     scheduledDate:document.getElementById('qa-date')?.value||null,
     deadline:null,assignee:'',notes:'',emoji:'',archivedOn:null,recurDays:null,
+    recurrence:document.getElementById('qa-recur')?.value||null,
     workspaceId:state.activeWs,createdAt:Date.now(),
   };
   state.tasks.push(t);save();closeOverlay();render();
@@ -1100,12 +1174,8 @@ function openTaskPopup(id){
   const dir=dirById(t.directionId);
   const dirOptions=`<option value="">— No direction</option>`+
     state.directions.map(d=>`<option value="${d.id}" ${d.id===t.directionId?'selected':''}>${d.emoji} ${d.name}</option>`).join('');
-  const recurOpts=[
-    {v:'',l:'No recurrence'},{v:'1',l:'Every Monday'},{v:'2',l:'Every Tuesday'},{v:'3',l:'Every Wednesday'},
-    {v:'4',l:'Every Thursday'},{v:'5',l:'Every Friday'},{v:'6',l:'Every Saturday'},{v:'0',l:'Every Sunday'},
-    {v:'1,4',l:'Mon & Thu'},{v:'1,3',l:'Mon & Wed'},{v:'2,5',l:'Tue & Fri'},
-    {v:'1,2,3,4,5',l:'Weekdays'},{v:'0,6',l:'Weekends'},
-  ].map(x=>`<option value="${x.v}" ${JSON.stringify(t.recurDays||[])===JSON.stringify(x.v.split(',').filter(Boolean).map(Number))?'selected':''}>${x.l}</option>`).join('');
+  const recurCurrent=t.recurrence||recurDaysToString(t.recurDays||[]);
+  const recurWidget=recurSelectHtml(recurCurrent,'pt-recur');
 
   showOverlay(`<div class="popup" onclick="event.stopPropagation()">
     <div class="popup-hdr"><button class="popup-close" onclick="closeOverlay()"><i class="ti ti-x"></i></button></div>
@@ -1130,7 +1200,7 @@ function openTaskPopup(id){
         </div>
         <div class="prop-row">
           <div class="prop-label"><i class="ti ti-repeat"></i> Recurrence</div>
-          <div class="prop-val"><select id="pt-recur">${recurOpts}</select></div>
+          <div class="prop-val">${recurWidget}</div>
         </div>
         <div class="prop-row">
           <div class="prop-label"><i class="ti ti-flag"></i> Type</div>
@@ -1163,17 +1233,72 @@ function openTaskPopup(id){
   </div>`);
 }
 
+function _readPopupChanges(t){
+  return{
+    name:document.getElementById('pt-name')?.value?.trim()||t.name,
+    directionId:document.getElementById('pt-dir')?.value||null,
+    type:document.getElementById('pt-type')?.value||t.type,
+    scheduledDate:document.getElementById('pt-sched')?.value||null,
+    deadline:document.getElementById('pt-deadline')?.value||null,
+    assignee:document.getElementById('pt-assignee')?.value?.trim()||'',
+    notes:document.getElementById('pt-notes')?.value||'',
+    recurrence:document.getElementById('pt-recur')?.value||null,
+    priority:t.priority, // set live by setTaskPriority
+    emoji:t.emoji,
+  };
+}
+function _applyChanges(t,ch){
+  Object.assign(t,ch);t.recurDays=null;
+}
+
 function saveTaskPopup(id){
   const t=state.tasks.find(x=>x.id===id);if(!t)return;
-  t.name=document.getElementById('pt-name')?.value?.trim()||t.name;
-  t.directionId=document.getElementById('pt-dir')?.value||null;
-  t.type=document.getElementById('pt-type')?.value||t.type;
-  t.scheduledDate=document.getElementById('pt-sched')?.value||null;
-  t.deadline=document.getElementById('pt-deadline')?.value||null;
-  t.assignee=document.getElementById('pt-assignee')?.value?.trim()||'';
-  t.notes=document.getElementById('pt-notes')?.value||'';
-  const rv=document.getElementById('pt-recur')?.value;
-  t.recurDays=rv?rv.split(',').map(Number):null;
+  const ch=_readPopupChanges(t);
+  const wasRecurring=t.recurrence&&t.recurrence!=='';
+  if(wasRecurring){
+    // Store changes, then show choice — must happen AFTER reading the form
+    if(!window._pendingRecur)window._pendingRecur={};
+    window._pendingRecur[id]=ch;
+    showOverlay(`<div class="mini-modal" onclick="event.stopPropagation()" style="max-width:320px">
+      <div style="font-size:13px;font-weight:600;color:var(--gray-900);margin-bottom:3px">Edit recurring task</div>
+      <div style="font-size:11px;color:var(--gray-400);margin-bottom:14px">Which occurrences should change?</div>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <div class="recur-choice-btn" onclick="saveThisOccurrence('${id}')">
+          <div style="font-size:12px;font-weight:500;color:var(--gray-900)">Only this occurrence</div>
+          <div style="font-size:11px;color:var(--gray-400);margin-top:2px">Creates a one-off copy for this date; series continues unchanged</div>
+        </div>
+        <div class="recur-choice-btn" onclick="saveThisAndFuture('${id}')">
+          <div style="font-size:12px;font-weight:500;color:var(--gray-900)">This and all following</div>
+          <div style="font-size:11px;color:var(--gray-400);margin-top:2px">Updates this date and all future occurrences in the series</div>
+        </div>
+      </div>
+      <div style="text-align:right;margin-top:14px"><button class="btn-cancel" onclick="openTaskPopup('${id}')">Back</button></div>
+    </div>`);
+  }else{
+    _applyChanges(t,ch);save();closeOverlay();render();
+  }
+}
+
+function saveThisOccurrence(id){
+  const t=state.tasks.find(x=>x.id===id);if(!t)return;
+  const ch=(window._pendingRecur||{})[id];if(!ch)return;
+  // Create standalone one-off copy with edits
+  const copy=JSON.parse(JSON.stringify(t));
+  copy.id=uid();copy.recurrence=null;copy.recurDays=null;
+  _applyChanges(copy,ch);
+  state.tasks.push(copy);
+  // Advance original task to next occurrence (untouched)
+  const next=nextRecurrenceDate(t,t.scheduledDate);
+  if(next)t.scheduledDate=next;else{t.recurrence=null;}
+  delete window._pendingRecur[id];
+  save();closeOverlay();render();
+}
+
+function saveThisAndFuture(id){
+  const t=state.tasks.find(x=>x.id===id);if(!t)return;
+  const ch=(window._pendingRecur||{})[id];if(!ch)return;
+  _applyChanges(t,ch);
+  delete window._pendingRecur[id];
   save();closeOverlay();render();
 }
 
@@ -1201,50 +1326,141 @@ function pickUserEmoji(){
 }
 
 // ── REMINDERS ─────────────────────────────────────────────────────────────────
+function remMatchesDate(r,date){
+  if(!r.date)return false;
+  const isYearly=r.yearly||r.recur==='yearly';
+  const isMonthly=r.recur==='monthly';
+  if(isYearly)  return r.date.slice(5)===date.slice(5);   // MM-DD match
+  if(isMonthly) return r.date.slice(8)===date.slice(8);   // DD match
+  return r.date===date;
+}
+function fmtRemDate(r){
+  if(!r||!r.date)return'';
+  const d=new Date(r.date+'T12:00:00');
+  const day=String(d.getDate()).padStart(2,'0');
+  const month=d.toLocaleDateString('en-GB',{month:'long'});
+  const isYearly=r.yearly||r.recur==='yearly';
+  const isMonthly=r.recur==='monthly';
+  if(isYearly)  return`${day} ${month}`;
+  if(isMonthly) return`${day} of each month`;
+  return`${day} ${month} ${d.getFullYear()}`;
+}
+function remRecurLabel(r){
+  if(r.yearly||r.recur==='yearly')  return'<span style="font-size:9px;color:var(--gray-400);margin-left:4px">↺ yearly</span>';
+  if(r.recur==='monthly') return'<span style="font-size:9px;color:var(--gray-400);margin-left:4px">↺ monthly</span>';
+  return'';
+}
+function remAutoEmoji(type){return type==='bday'?'🎂':type==='holiday'?'🗓️':'📌';}
+
 function openReminders(){renderRemindersPanel();}
 
 function renderRemindersPanel(){
-  const rems=state.reminders.sort((a,b)=>a.date.localeCompare(b.date));
-  showOverlay(`<div class="rem-panel" onclick="event.stopPropagation()">
+  const rems=[...state.reminders].sort((a,b)=>{
+    // sort by MM-DD for yearly, full date otherwise
+    const ak=(a.yearly||a.recur==='yearly')?a.date.slice(5):a.date;
+    const bk=(b.yearly||b.recur==='yearly')?b.date.slice(5):b.date;
+    return ak.localeCompare(bk);
+  });
+  showOverlay(`<div class="rem-panel" onclick="event.stopPropagation()" style="max-width:520px">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
       <div style="font-size:14px;font-weight:500;color:var(--gray-900)">Reminders & Events</div>
       <button class="popup-close" onclick="closeOverlay()"><i class="ti ti-x"></i></button>
     </div>
     <div class="rem-list">
       ${rems.length?rems.map(r=>`<div class="rem-item">
-        <span class="rem-item-emoji">${r.emoji||'📌'}</span>
-        <span class="rem-item-text">${escHtml(r.text)}</span>
-        <span class="rem-item-date">${fmt(r.date)}</span>
+        <span class="rem-item-emoji">${r.emoji||remAutoEmoji(r.type)}</span>
+        <span class="rem-item-text">${escHtml(r.text)}${remRecurLabel(r)}</span>
+        <span class="rem-item-date">${fmtRemDate(r)}</span>
         <button class="rem-item-del" onclick="deleteReminder('${r.id}')"><i class="ti ti-x"></i></button>
       </div>`).join(''):'<div style="font-size:12px;color:var(--gray-400);text-align:center;padding:16px">No reminders yet</div>'}
     </div>
     <div class="rem-add-form">
       <div style="font-size:11px;font-weight:500;color:var(--gray-700);margin-bottom:6px">Add reminder</div>
       <div class="rem-add-row">
-        <input class="rem-input" style="width:48px" id="rem-emoji" placeholder="📌">
-        <input class="rem-input" id="rem-text" placeholder="Birthday, holiday, deadline...">
-        <input class="rem-input" style="width:130px" id="rem-date" type="date" value="${today()}">
+        <input class="rem-input" style="width:48px" id="rem-emoji" placeholder="📌" title="Emoji (auto-set for birthday/holiday)">
+        <input class="rem-input" id="rem-text" placeholder="Name, event, note...">
+        <input class="rem-input" style="width:140px" id="rem-date" type="date" value="${today()}">
       </div>
-      <div class="rem-add-row">
-        <select class="qa-select" id="rem-type" style="flex:1">
-          <option value="custom">Custom</option><option value="bday">Birthday 🎂</option><option value="holiday">Holiday 🗓️</option>
+      <div class="rem-add-row" style="align-items:center;gap:8px">
+        <select class="qa-select" id="rem-type" style="flex:1" onchange="onRemTypeChange(this.value)">
+          <option value="bday">Birthday 🎂</option>
+          <option value="holiday">Holiday 🗓️</option>
+          <option value="custom" selected>Custom</option>
         </select>
-        <button class="btn-save" onclick="addReminder()" style="padding:5px 14px">Add</button>
+        <div id="rem-recur-wrap" style="flex:1">
+          <select class="qa-select" id="rem-recur" style="width:100%">
+            <option value="once">One-time</option>
+            <option value="yearly">Yearly (same date)</option>
+            <option value="monthly">Monthly (same day)</option>
+          </select>
+        </div>
+        <button class="btn-save" onclick="addReminder()" style="padding:5px 14px;flex-shrink:0">Add</button>
       </div>
-      <div style="font-size:11px;font-weight:500;color:var(--gray-700);margin:10px 0 4px">Bulk import (one per line: YYYY-MM-DD text)</div>
-      <textarea class="bulk-textarea" id="rem-bulk" placeholder="2026-06-01 Mum's birthday&#10;2026-06-28 Constitution Day"></textarea>
+      <div style="font-size:11px;font-weight:500;color:var(--gray-700);margin:12px 0 4px">
+        Bulk import <span style="font-weight:400;color:var(--gray-400)">(one per line: YYYY-MM-DD text, or DD Month text)</span>
+      </div>
+      <textarea class="bulk-textarea" id="rem-bulk" placeholder="2026-06-01 Mum's birthday&#10;2026-06-28 Constitution Day&#10;04 July Olesia's birthday"></textarea>
       <button class="btn-sm" onclick="importBulkReminders()" style="margin-top:6px;width:100%;justify-content:center"><i class="ti ti-upload" style="font-size:11px"></i> Import list</button>
     </div>
   </div>`);
 }
 
+function onRemTypeChange(val){
+  const rw=document.getElementById('rem-recur-wrap');
+  const ei=document.getElementById('rem-emoji');
+  if(!rw)return;
+  if(val==='bday'||val==='holiday'){
+    rw.style.display='none';
+    if(ei){ei.value=remAutoEmoji(val);ei.style.opacity='.5';}
+  }else{
+    rw.style.display='';
+    if(ei){ei.value='';ei.style.opacity='';}
+  }
+}
+
 function addReminder(){
-  const emoji=document.getElementById('rem-emoji')?.value?.trim()||'📌';
   const text=document.getElementById('rem-text')?.value?.trim();
   const date=document.getElementById('rem-date')?.value;
   const type=document.getElementById('rem-type')?.value||'custom';
   if(!text||!date)return;
-  state.reminders.push({id:uid(),text,date,emoji,type});save();renderRemindersPanel();
+  const isBday=type==='bday',isHoliday=type==='holiday';
+  const emoji=isBday?'🎂':isHoliday?'🗓️':(document.getElementById('rem-emoji')?.value?.trim()||'📌');
+  const recur=isBday||isHoliday?'yearly':(document.getElementById('rem-recur')?.value||'once');
+  const yearly=recur==='yearly';
+  state.reminders.push({id:uid(),text,date,emoji,type,recur,yearly});
+  save();renderRemindersPanel();
+}
+
+function importBulkReminders(){
+  const raw=document.getElementById('rem-bulk')?.value||'';
+  const MONTHS={january:1,february:2,march:3,april:4,may:5,june:6,july:7,august:8,september:9,october:10,november:11,december:12,
+    jan:1,feb:2,mar:3,apr:4,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12};
+  const lines=raw.split('\n').map(l=>l.trim()).filter(Boolean);
+  let added=0;
+  lines.forEach(line=>{
+    let date=null,text='';
+    // Try YYYY-MM-DD
+    const m1=line.match(/^(\d{4}-\d{2}-\d{2})\s+(.+)$/);
+    if(m1){date=m1[1];text=m1[2].trim();}
+    else{
+      // Try DD Month or Month DD
+      const m2=line.match(/^(\d{1,2})\s+([A-Za-z]+)\s+(.+)$/);
+      if(m2){
+        const mo=MONTHS[m2[2].toLowerCase()];
+        if(mo){const yr=new Date().getFullYear();date=`${yr}-${String(mo).padStart(2,'0')}-${String(m2[1]).padStart(2,'0')}`;text=m2[3].trim();}
+      }
+    }
+    if(!date||!text)return;
+    const tl=text.toLowerCase();
+    const type=tl.includes('birthday')||tl.includes('bday')?'bday':
+                tl.includes('holiday')||tl.includes('day of')||tl.includes('constitution')||tl.includes('independence')?'holiday':'custom';
+    const emoji=remAutoEmoji(type);
+    const recur=type==='bday'||type==='holiday'?'yearly':'once';
+    state.reminders.push({id:uid(),text,date,emoji,type,recur,yearly:recur==='yearly'});
+    added++;
+  });
+  if(added){save();showNotif(`Added ${added} reminder${added===1?'':'s'}`);renderRemindersPanel();}
+  else showNotif('No valid lines found. Use: YYYY-MM-DD Name or DD Month Name');
 }
 
 function deleteReminder(id){
