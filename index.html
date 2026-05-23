@@ -252,9 +252,53 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 ::-webkit-scrollbar{width:4px;height:4px}
 ::-webkit-scrollbar-track{background:transparent}
 ::-webkit-scrollbar-thumb{background:var(--gray-300);border-radius:4px}
-@media(max-width:700px){
-  .sb{position:fixed;z-index:50;height:100%;box-shadow:4px 0 20px rgba(0,0,0,.1)}
+/* MOBILE DAY STRIP (only rendered by renderMobileWeekly) */
+.mob-day-strip{display:flex;background:#fff;border-bottom:1px solid var(--gray-200);flex-shrink:0}
+.mob-day-pill{flex:1;display:flex;flex-direction:column;align-items:center;padding:8px 2px 6px;background:none;border:none;cursor:pointer;gap:3px;position:relative}
+.mob-day-pill.active{background:#f0f4ff}
+.mob-day-pill.active .mob-pill-name{color:var(--blue)}
+.mob-day-pill.active .mob-pill-num{color:var(--blue);font-weight:700}
+.mob-pill-name{font-size:9px;color:var(--gray-400);text-transform:uppercase;letter-spacing:.06em}
+.mob-pill-num{font-size:13px;font-weight:500;color:var(--gray-600);width:22px;height:22px;display:flex;align-items:center;justify-content:center;border-radius:50%}
+.mob-day-pill.is-today .mob-pill-num{background:var(--red);color:#fff!important;font-weight:700}
+.mob-day-view{display:flex;flex-direction:column;flex:1;overflow-y:auto}
+.mob-day-hdr{padding:10px 14px 8px;background:#fff;border-bottom:1px solid var(--gray-200);flex-shrink:0}
+.sync-dot{width:7px;height:7px;border-radius:50%;display:inline-block;margin-left:4px;vertical-align:middle;flex-shrink:0}
+@media(max-width:767px){
+  body{overflow:auto}
+  .shell{height:auto;min-height:100vh;overflow:visible}
+  .main{overflow:visible;min-height:100vh}
+  .content{overflow:visible}
+  .sb{display:none!important}
+  .topbar{padding:0 4px}
+  .toggle-sb{display:none}
+  .tab{padding:10px 7px;gap:3px}
+  .tab i{font-size:14px}
   .tab span{display:none}
+  .tab-actions{gap:4px;padding:0 2px}
+  .tab-actions .btn-sm{padding:4px 7px;gap:2px}
+  .tab-actions .btn-sm .btn-label{display:none}
+  .week-bar{padding:4px 8px 8px;gap:5px}
+  .week-label{font-size:10px}
+  .cal-wrap{margin:0;border-radius:0;border-left:none;border-right:none}
+  .below-cal-grid{grid-template-columns:1fr;padding:0 12px 32px}
+  .page-pad{padding:10px 12px 6px}
+  .clock-widget{gap:10px}
+  .clock-time{font-size:16px}
+  /* Bottom-sheet overlays */
+  .overlay{align-items:flex-end;padding:0}
+  #overlay-content{width:100%;display:flex;flex-direction:column}
+  #overlay-content>*{border-radius:16px 16px 0 0!important;max-width:100%!important;width:100%!important;max-height:88vh!important;overflow-y:auto!important;box-sizing:border-box}
+  /* Task cards bigger touch target */
+  .tc{padding:8px 8px 8px 7px}
+  .tc-name{font-size:12px}
+  .tc-cb{width:16px;height:16px;border-radius:4px}
+  .tc-assignee{width:18px;height:18px;font-size:9px;top:6px;right:6px}
+  .add-task-row{height:36px;padding:0 10px}
+  .add-task-btn{color:var(--gray-400)!important;display:flex;align-items:center;gap:5px;width:auto!important}
+  .day-tasks{min-height:50vh}
+  /* Notif toast */
+  .notif-toast{bottom:80px;right:12px}
 }
 </style>
 </head>
@@ -324,6 +368,8 @@ let state={
 function save(){
   ['workspaces','activeWs','directions','tasks','reminders','lists','wsNotes','userName','userEmoji','weekOffset']
     .forEach(k=>localStorage.setItem('tasker_'+k,JSON.stringify(state[k])));
+  localStorage.setItem('tasker_ts',Date.now());
+  syncPush();
 }
 function load(){
   ['workspaces','activeWs','directions','tasks','reminders','lists','wsNotes','userName','userEmoji','weekOffset']
@@ -755,6 +801,7 @@ function renderTabs(){
   const actions=document.getElementById('tab-actions');
   if(state.activeTab==='weekly'){
     actions.innerHTML=`<button class="btn-sm" onclick="openReminders()"><i class="ti ti-bell" style="font-size:11px"></i> Reminders</button>
+      <button class="btn-sm" onclick="openSync()" title="Sync between devices" style="display:flex;align-items:center;gap:4px"><i class="ti ti-cloud" style="font-size:11px"></i><span class="btn-label">Sync</span><span class="sync-dot" style="display:none"></span></button>
       <button class="btn-sm btn-primary" onclick="openAddTask(null)"><i class="ti ti-plus" style="font-size:11px"></i> Add task</button>`;
   }else if(state.activeTab==='backlog'){
     actions.innerHTML=`<button class="btn-sm btn-primary" onclick="openAddTask(null)"><i class="ti ti-plus" style="font-size:11px"></i> Add task</button>`;
@@ -762,7 +809,10 @@ function renderTabs(){
 }
 
 // ── WEEKLY VIEW ───────────────────────────────────────────────────────────────
+let _mobileDayIdx=null;
+function setMobileDay(i){_mobileDayIdx=i;renderWeekly();}
 function renderWeekly(){
+  if(window.innerWidth<768){renderMobileWeekly();return;}
   const ws=state.workspaces.find(w=>w.id===state.activeWs)||state.workspaces[0];
   const dates=getWeekDates(state.weekOffset),td=today();
   const todayIdx=dates.indexOf(td);
@@ -859,6 +909,84 @@ function renderWeekly(){
   </div>`;
   document.getElementById('content').innerHTML=html;
   setTimeout(()=>{setupNotesEditor(state.activeWs);startClock();},0);
+}
+
+// ── MOBILE WEEKLY VIEW ────────────────────────────────────────────────────────
+function renderMobileWeekly(){
+  const ws=state.workspaces.find(w=>w.id===state.activeWs)||state.workspaces[0];
+  const dates=getWeekDates(state.weekOffset),td=today();
+  // Auto-select today if in current week, else Monday
+  if(_mobileDayIdx===null){
+    const ti=dates.indexOf(td);_mobileDayIdx=ti>=0?ti:0;
+  }
+  const dayIdx=Math.max(0,Math.min(6,_mobileDayIdx));
+  const date=dates[dayIdx];
+  // Day picker strip
+  const strip=dates.map((d,i)=>{
+    const dow=dayOfWeek(d),isToday=d===td,isActive=i===dayIdx;
+    return`<button class="mob-day-pill${isActive?' active':''}${isToday?' is-today':''}" onclick="setMobileDay(${i})">
+      <span class="mob-pill-name">${DAY_NAMES[dow].slice(0,1)}</span>
+      <span class="mob-pill-num">${d.slice(8)}</span>
+    </button>`;
+  }).join('');
+  // Selected day data
+  const w=state.weather[date];
+  const rems=state.reminders.filter(r=>remMatchesDate(r,date));
+  const vacRems=rems.filter(r=>r.type==='vacation');
+  const nonVacRems=rems.filter(r=>r.type!=='vacation');
+  const vacBarsHtml=vacRems.map(v=>`<div class="d-vac-bar vac-solo">${escHtml(v.text)}</div>`).join('');
+  const tasks=state.tasks.filter(t=>{
+    if(t.workspaceId!==state.activeWs) return false;
+    if(t.status==='done'||t.status==='rolled') return t.scheduledDate===date;
+    if(t.scheduledDate===date) return true;
+    const r=t.recurrence||recurDaysToString(t.recurDays||[]);
+    if(!r||!t.scheduledDate||t.scheduledDate>date) return false;
+    return taskOccursOn(t,date);
+  }).sort((a,b)=>{
+    const aPinnedIdx=a.sortOrder==null?PINNED_DIR_ORDER.indexOf(dirById(a.directionId)?.name??''):-1;
+    const bPinnedIdx=b.sortOrder==null?PINNED_DIR_ORDER.indexOf(dirById(b.directionId)?.name??''):-1;
+    if(aPinnedIdx>=0&&bPinnedIdx>=0) return aPinnedIdx-bPinnedIdx;
+    if(aPinnedIdx>=0) return -1;
+    if(bPinnedIdx>=0) return 1;
+    const ao=a.sortOrder??Infinity,bo=b.sortOrder??Infinity;
+    if(ao!==bo)return ao-bo;
+    const p={urgent:0,high:1,medium:2,low:3};
+    return(p[a.type==='urgent'?'urgent':a.priority]||4)-(p[b.type==='urgent'?'urgent':b.priority]||4);
+  });
+  const dow=dayOfWeek(date);
+  const monthName=new Date(date+'T12:00:00').toLocaleString('default',{month:'short'});
+  const html=`
+    <div style="padding:10px 14px 4px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
+      <div style="font-size:16px;font-weight:600;color:var(--gray-900)">${escHtml(ws.name)}</div>
+      <div style="display:flex;gap:5px;align-items:center">
+        <button class="nav-btn" onclick="changeWeek(-1);_mobileDayIdx=null">‹</button>
+        <button class="nav-btn" onclick="changeWeek(0);_mobileDayIdx=null" style="font-size:10px">Today</button>
+        <button class="nav-btn" onclick="changeWeek(1);_mobileDayIdx=null">›</button>
+        <span style="font-size:10px;color:var(--gray-400);margin-left:2px">${dates[0].slice(5).replace('-','/')}–${dates[6].slice(5).replace('-','/')}</span>
+      </div>
+    </div>
+    <div class="mob-day-strip">${strip}</div>
+    <div class="mob-day-view">
+      <div class="mob-day-hdr">
+        <div style="font-size:13px;font-weight:600;color:${date===td?'var(--red)':'var(--gray-900)'}">
+          ${date===td?'Today · ':''}${DAY_NAMES[dow]}, ${date.slice(8)} ${monthName}
+        </div>
+        ${w?`<div class="d-weather" style="margin-top:2px">${w.icon} ${w.temp}${date===td&&state.userCity?' · '+state.userCity:''}</div>`:''}
+        ${nonVacRems.length?`<div class="d-reminders" style="margin-top:4px">${nonVacRems.map(r=>`<div class="d-reminder ${r.type}">${r.emoji||'📌'} ${escHtml(r.text)}</div>`).join('')}</div>`:''}
+        ${vacBarsHtml?`<div style="margin-top:4px">${vacBarsHtml}</div>`:''}
+      </div>
+      <div class="day-tasks" ondragover="taskDragOver(event,'${date}')" ondragleave="taskDragLeave(event)" ondrop="taskDrop(event,'${date}')" style="flex:1;min-height:50vh">
+        ${tasks.map(t=>renderTaskCard(t)).join('')}
+      </div>
+      <div class="add-task-row" style="height:44px;padding:0 12px">
+        <button class="add-task-btn" onclick="openAddTask('${date}')" style="color:var(--gray-400)">
+          <i class="ti ti-plus" style="font-size:13px"></i>
+          <span style="font-size:12px;margin-left:4px">Add task</span>
+        </button>
+      </div>
+    </div>`;
+  document.getElementById('content').innerHTML=html;
+  setTimeout(()=>startClock(),0);
 }
 
 const PINNED_DIR_ORDER=['Cleaning','Food','Gym','English','Other'];
@@ -1737,7 +1865,7 @@ function startClock(){
 
 // ── NAVIGATION ────────────────────────────────────────────────────────────────
 function setTab(tab){state.activeTab=tab;save();render();}
-function changeWeek(n){if(n===0)state.weekOffset=0;else state.weekOffset+=n;save();fetchWeather();render();}
+function changeWeek(n){if(n===0)state.weekOffset=0;else state.weekOffset+=n;_mobileDayIdx=null;save();fetchWeather();render();}
 
 // ── DRAG & DROP TASKS ─────────────────────────────────────────────────────────
 let _dragTaskId=null;
@@ -1877,6 +2005,176 @@ document.getElementById('toggle-sb-btn').addEventListener('click',()=>{
 });
 
 load();cleanupArchive();autoRollover();render();fetchWeather();
+// Pull latest data from cloud on startup (if configured)
+setTimeout(syncPull,1500);
+
+// ── CLOUD SYNC (JSONbin.io) ───────────────────────────────────────────────────
+let syncCfg=JSON.parse(localStorage.getItem('tasker_sync')||'null')||{};
+let _syncTimer=null,_syncStatus='idle',_syncLastOk=0;
+const SYNC_KEYS=['workspaces','tasks','reminders','lists','wsNotes','userName','userEmoji','userCity','directions'];
+
+function syncPush(force){
+  if(!syncCfg.apiKey) return;
+  clearTimeout(_syncTimer);
+  if(!force){_syncTimer=setTimeout(()=>syncPush(true),3500);return;}
+  _syncStatus='syncing';updateSyncDot();
+  const data={_ts:Date.now(),_v:2};
+  SYNC_KEYS.forEach(k=>data[k]=state[k]);
+  const url=syncCfg.binId
+    ?`https://api.jsonbin.io/v3/b/${syncCfg.binId}`
+    :'https://api.jsonbin.io/v3/b';
+  const method=syncCfg.binId?'PUT':'POST';
+  const headers={'Content-Type':'application/json','X-Master-Key':syncCfg.apiKey};
+  if(!syncCfg.binId){headers['X-Bin-Name']='tasker-data';headers['X-Bin-Private']='false';}
+  fetch(url,{method,headers,body:JSON.stringify(data)})
+    .then(r=>r.json())
+    .then(r=>{
+      if(!syncCfg.binId&&r.metadata?.id){
+        syncCfg.binId=r.metadata.id;
+        localStorage.setItem('tasker_sync',JSON.stringify(syncCfg));
+      }
+      _syncStatus='ok';_syncLastOk=Date.now();updateSyncDot();
+    })
+    .catch(()=>{_syncStatus='err';updateSyncDot();});
+}
+
+async function syncPull(){
+  if(!syncCfg.apiKey||!syncCfg.binId) return;
+  try{
+    const r=await fetch(`https://api.jsonbin.io/v3/b/${syncCfg.binId}/latest`,{
+      headers:{'X-Master-Key':syncCfg.apiKey}
+    });
+    const j=await r.json();
+    const remote=j.record;
+    if(!remote||!remote._ts) return;
+    const localTs=parseInt(localStorage.getItem('tasker_ts')||'0');
+    if(remote._ts>localTs+2000){
+      SYNC_KEYS.forEach(k=>{if(remote[k]!==undefined)state[k]=remote[k];});
+      localStorage.setItem('tasker_ts',remote._ts);
+      ['workspaces','activeWs','directions','tasks','reminders','lists','wsNotes','userName','userEmoji','weekOffset']
+        .forEach(k=>localStorage.setItem('tasker_'+k,JSON.stringify(state[k])));
+      render();
+      showNotif('↓ Дані синхронізовано з хмари');
+    }
+    _syncStatus='ok';_syncLastOk=Date.now();updateSyncDot();
+  }catch(e){console.warn('syncPull err',e);_syncStatus='err';updateSyncDot();}
+}
+
+function updateSyncDot(){
+  document.querySelectorAll('.sync-dot').forEach(dot=>{
+    if(!syncCfg.apiKey){dot.style.display='none';return;}
+    dot.style.display='inline-block';
+    dot.style.background=_syncStatus==='ok'?'#22c55e':_syncStatus==='err'?'#ef4444':'#f59e0b';
+    dot.title=_syncStatus==='ok'?'Synced ✓':_syncStatus==='err'?'Sync error':'Syncing…';
+  });
+}
+
+function openSync(){
+  const cfg=syncCfg;
+  const hasKey=!!cfg.apiKey;
+  const statusHtml=hasKey
+    ?`<div style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;margin-bottom:4px">
+        <span style="font-size:18px">☁️</span>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:12px;font-weight:600;color:#15803d">Cloud sync активний</div>
+          <div style="font-size:10.5px;color:#16a34a;word-break:break-all">Bin: ${cfg.binId||'(буде створено при першому збереженні)'}</div>
+        </div>
+        <button onclick="syncPull()" class="btn-sm" style="font-size:10px;flex-shrink:0"><i class="ti ti-refresh" style="font-size:10px"></i> Pull now</button>
+      </div>`
+    :`<div style="padding:10px 12px;background:#fefce8;border:1px solid #fef08a;border-radius:8px;font-size:11.5px;color:#854d0e;line-height:1.6;margin-bottom:4px">
+        <b>Як налаштувати:</b><br>
+        1. Зайди на <a href="https://jsonbin.io" target="_blank" style="color:#2563eb">jsonbin.io</a> → Sign up (безплатно)<br>
+        2. API Keys → скопіюй <b>$2a$10…</b> ключ<br>
+        3. Встав нижче і натисни Save
+      </div>`;
+  showOverlay(`
+    <div style="background:#fff;border-radius:12px;width:460px;max-width:96vw;padding:20px 22px;display:flex;flex-direction:column;gap:14px" onclick="event.stopPropagation()">
+      <div style="font-size:14px;font-weight:600;color:var(--gray-900);display:flex;align-items:center;gap:8px">
+        <i class="ti ti-cloud" style="font-size:16px;color:var(--blue)"></i> Cloud Sync
+        <span class="sync-dot" style="display:none"></span>
+      </div>
+      ${statusHtml}
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <label style="font-size:11px;font-weight:600;color:var(--gray-700)">JSONbin.io Master Key</label>
+        <input id="sync-key-inp" type="password" placeholder="\$2a\$10…" value="${escHtml(cfg.apiKey||'')}"
+          style="border:1px solid var(--gray-200);border-radius:6px;padding:8px 10px;font-size:12px;font-family:monospace;outline:none;width:100%">
+        ${cfg.binId?`<label style="font-size:11px;font-weight:600;color:var(--gray-700);margin-top:4px">Bin ID (залиш пустим щоб створити новий)</label>
+        <input id="sync-bin-inp" type="text" placeholder="auto" value="${escHtml(cfg.binId||'')}"
+          style="border:1px solid var(--gray-200);border-radius:6px;padding:8px 10px;font-size:12px;font-family:monospace;outline:none;width:100%">`:''}
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button onclick="saveSyncCfg()" class="btn-sm btn-primary"><i class="ti ti-device-floppy" style="font-size:11px"></i> Save & Sync now</button>
+        ${hasKey?`<button onclick="clearSyncCfg()" class="btn-sm" style="color:#dc2626;border-color:#fca5a5"><i class="ti ti-trash" style="font-size:11px"></i> Відключити</button>`:''}
+        <button class="btn-sm" onclick="closeOverlay({target:document.getElementById('overlay')})" style="margin-left:auto">Закрити</button>
+      </div>
+      <div style="border-top:1px solid var(--gray-200);padding-top:12px">
+        <div style="font-size:11px;font-weight:600;color:var(--gray-700);margin-bottom:8px">Або разовий перенос (без хмари)</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <button onclick="exportOnce()" class="btn-sm"><i class="ti ti-copy" style="font-size:11px"></i> <span class="btn-label">Скопіювати код</span></button>
+          <button onclick="showImportOnce()" class="btn-sm"><i class="ti ti-clipboard" style="font-size:11px"></i> <span class="btn-label">Вставити код</span></button>
+        </div>
+        <div id="once-export-wrap" style="display:none;margin-top:8px;position:relative">
+          <textarea id="once-export-ta" readonly style="width:100%;height:60px;font-size:10px;font-family:monospace;border:1px solid var(--gray-200);border-radius:6px;padding:7px 8px;resize:none;background:var(--gray-50)" onclick="this.select()"></textarea>
+          <button onclick="copyOnce()" id="once-copy-btn" style="position:absolute;bottom:7px;right:7px;background:var(--blue);color:#fff;border:none;border-radius:5px;padding:3px 10px;font-size:10px;cursor:pointer">Copy</button>
+        </div>
+        <div id="once-import-wrap" style="display:none;margin-top:8px">
+          <textarea id="once-import-ta" placeholder="Встав код тут…" style="width:100%;height:60px;font-size:10px;font-family:monospace;border:1px solid var(--gray-200);border-radius:6px;padding:7px 8px;resize:none"></textarea>
+          <button onclick="importOnce()" class="btn-sm btn-primary" style="margin-top:6px"><i class="ti ti-download" style="font-size:11px"></i> Завантажити</button>
+        </div>
+      </div>
+    </div>
+  `);
+  setTimeout(updateSyncDot,0);
+}
+
+function saveSyncCfg(){
+  const key=(document.getElementById('sync-key-inp').value||'').trim();
+  const binInp=document.getElementById('sync-bin-inp');
+  const bin=binInp?(binInp.value||'').trim():'';
+  if(!key){alert('Введи API ключ');return;}
+  syncCfg={apiKey:key,binId:bin||syncCfg.binId||''};
+  localStorage.setItem('tasker_sync',JSON.stringify(syncCfg));
+  syncPush(true);
+  closeOverlay({target:document.getElementById('overlay')});
+  showNotif('☁️ Sync налаштовано — дані завантажуються…');
+  setTimeout(syncPull,2000);
+}
+function clearSyncCfg(){
+  if(!confirm('Відключити cloud sync? Дані на пристрої залишаться.'))return;
+  syncCfg={};localStorage.removeItem('tasker_sync');
+  _syncStatus='idle';updateSyncDot();
+  closeOverlay({target:document.getElementById('overlay')});
+}
+function exportOnce(){
+  const snap={_v:2,_ts:Date.now()};
+  SYNC_KEYS.forEach(k=>snap[k]=state[k]);
+  const b64=btoa(unescape(encodeURIComponent(JSON.stringify(snap))));
+  document.getElementById('once-export-wrap').style.display='block';
+  document.getElementById('once-import-wrap').style.display='none';
+  document.getElementById('once-export-ta').value=b64;
+}
+function copyOnce(){
+  const ta=document.getElementById('once-export-ta');ta.select();
+  navigator.clipboard.writeText(ta.value).then(()=>{
+    const b=document.getElementById('once-copy-btn');b.textContent='Copied ✓';b.style.background='#16a34a';
+    setTimeout(()=>{b.textContent='Copy';b.style.background='var(--blue)';},2000);
+  }).catch(()=>document.execCommand('copy'));
+}
+function showImportOnce(){
+  document.getElementById('once-import-wrap').style.display='block';
+  document.getElementById('once-export-wrap').style.display='none';
+}
+function importOnce(){
+  const raw=(document.getElementById('once-import-ta').value||'').trim();
+  if(!raw){alert('Встав код!');return;}
+  try{
+    const snap=JSON.parse(decodeURIComponent(escape(atob(raw))));
+    SYNC_KEYS.forEach(k=>{if(snap[k]!==undefined)state[k]=snap[k];});
+    save();render();
+    closeOverlay({target:document.getElementById('overlay')});
+    showNotif('✓ Дані завантажено!');
+  }catch(e){alert('Невірний код');}
+}
 </script>
 </body>
 </html>
