@@ -1370,12 +1370,12 @@ function fmtRemDate(r){
   return`${day} ${month} ${d.getFullYear()}`;
 }
 function remRecurLabel(r){
-  if(r.type==='vacation') return'<span style="font-size:9px;color:var(--gray-400);margin-left:4px">🏖️</span>';
+  if(r.type==='vacation') return'<span style="font-size:9px;color:var(--gray-400);margin-left:4px">🐒</span>';
   if(r.yearly||r.recur==='yearly')  return'<span style="font-size:9px;color:var(--gray-400);margin-left:4px">↺ yearly</span>';
   if(r.recur==='monthly') return'<span style="font-size:9px;color:var(--gray-400);margin-left:4px">↺ monthly</span>';
   return'';
 }
-function remAutoEmoji(type){return type==='bday'?'🎂':type==='holiday'?'🗓️':type==='vacation'?'🏖️':'📌';}
+function remAutoEmoji(type){return type==='bday'?'🎂':type==='holiday'?'🗓️':type==='vacation'?'🐒':'📌';}
 
 function openReminders(){renderRemindersPanel();}
 
@@ -1414,7 +1414,7 @@ function renderRemindersPanel(){
         <select class="qa-select" id="rem-type" style="flex:1" onchange="onRemTypeChange(this.value)">
           <option value="bday">Birthday 🎂</option>
           <option value="holiday">Holiday 🗓️</option>
-          <option value="vacation">Vacation 🏖️</option>
+          <option value="vacation">Day-Off 🐒</option>
           <option value="custom" selected>Custom</option>
         </select>
         <div id="rem-recur-wrap" style="flex:1">
@@ -1427,9 +1427,9 @@ function renderRemindersPanel(){
         <button class="btn-save" onclick="addReminder()" style="padding:5px 14px;flex-shrink:0">Add</button>
       </div>
       <div style="font-size:11px;font-weight:500;color:var(--gray-700);margin:12px 0 4px">
-        Bulk import <span style="font-weight:400;color:var(--gray-400)">(one per line: YYYY-MM-DD text, or DD Month text)</span>
+        Bulk import <span style="font-weight:400;color:var(--gray-400)">(one per line: YYYY-MM-DD text, or DD Month text; day-off: YYYY-MM-DD YYYY-MM-DD text)</span>
       </div>
-      <textarea class="bulk-textarea" id="rem-bulk" placeholder="13-05 Sasha's birthday&#10;04-07 Olesia's birthday&#10;2026-06-28 Constitution Day"></textarea>
+      <textarea class="bulk-textarea" id="rem-bulk" placeholder="13-05 Sasha's birthday&#10;04-07 Olesia's birthday&#10;2026-06-28 Constitution Day&#10;2026-07-10 2026-07-20 Summer day-off"></textarea>
       <button class="btn-sm" onclick="importBulkReminders()" style="margin-top:6px;width:100%;justify-content:center"><i class="ti ti-upload" style="font-size:11px"></i> Import list</button>
     </div>
   </div>`);
@@ -1462,7 +1462,7 @@ function addReminder(){
   if(!text||!date)return;
   if(type==='vacation'){
     const endDate=document.getElementById('rem-date-end')?.value||date;
-    state.reminders.push({id:uid(),text,date,startDate:date,endDate,emoji:'🏖️',type,recur:'once',yearly:false});
+    state.reminders.push({id:uid(),text,date,startDate:date,endDate,emoji:'🐒',type,recur:'once',yearly:false});
     save();renderRemindersPanel();return;
   }
   const isBday=type==='bday',isHoliday=type==='holiday';
@@ -1477,14 +1477,29 @@ function importBulkReminders(){
   const raw=document.getElementById('rem-bulk')?.value||'';
   const MONTHS={january:1,february:2,march:3,april:4,may:5,june:6,july:7,august:8,september:9,october:10,november:11,december:12,
     jan:1,feb:2,mar:3,apr:4,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12};
-  // Auto-split concatenated entries: insert newline before each date pattern start
+  const forcedType=document.getElementById('rem-type')?.value;
+  let added=0;
+
+  // ── Step 1: Extract vacation range lines (YYYY-MM-DD YYYY-MM-DD text) BEFORE splitting
+  const vacRanges=[];
+  const withoutVacRanges=raw.replace(/(\d{4}-\d{2}-\d{2})\s+(\d{4}-\d{2}-\d{2})\s+([^\n]+)/g,(match,d1,d2,txt)=>{
+    vacRanges.push({startDate:d1,endDate:d2,text:txt.trim()});
+    return '';
+  });
+  vacRanges.forEach(v=>{
+    state.reminders.push({id:uid(),text:v.text,date:v.startDate,startDate:v.startDate,endDate:v.endDate,emoji:'🐒',type:'vacation',recur:'once',yearly:false});
+    added++;
+  });
+
+  // ── Step 2: Auto-split concatenated entries (non-vacation lines)
   const MRE='Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?';
-  const normalized=raw.replace(
+  const normalized=withoutVacRanges.replace(
     new RegExp(`([^\\d\\n])(?=(\\d{1,2}\\s+(?:${MRE})\\s|\\d{4}-\\d{2}-\\d{2}|\\d{1,2}[-./]\\d{1,2}\\s))`,'gi'),
     '$1\n'
   );
   const lines=normalized.split('\n').map(l=>l.trim()).filter(Boolean);
-  let added=0;
+
+  // ── Step 3: Process single-date lines
   lines.forEach(line=>{
     let date=null,text='';
     // Try YYYY-MM-DD
@@ -1508,18 +1523,18 @@ function importBulkReminders(){
     }
     if(!date||!text)return;
     // Use the dropdown type if explicitly chosen (not 'custom'), else auto-detect
-    const forcedType=document.getElementById('rem-type')?.value;
     const tl=text.toLowerCase();
     const autoType=tl.includes('birthday')||tl.includes('bday')?'bday':
                    tl.includes('holiday')||tl.includes('day of')||tl.includes('constitution')||tl.includes('independence')?'holiday':'custom';
-    const type=(forcedType&&forcedType!=='custom')?forcedType:autoType;
+    const type=(forcedType&&forcedType!=='custom'&&forcedType!=='vacation')?forcedType:autoType;
     const emoji=remAutoEmoji(type);
     const recur=type==='bday'||type==='holiday'?'yearly':'once';
     state.reminders.push({id:uid(),text,date,emoji,type,recur,yearly:recur==='yearly'});
     added++;
   });
+
   if(added){save();showNotif(`Added ${added} reminder${added===1?'':'s'}`);renderRemindersPanel();}
-  else showNotif('No valid lines. Use: DD-MM Name, YYYY-MM-DD Name, or DD Month Name');
+  else showNotif('No valid lines. Use: DD-MM Name, YYYY-MM-DD Name, DD Month Name, or YYYY-MM-DD YYYY-MM-DD Day-Off name');
 }
 
 function deleteReminder(id){
