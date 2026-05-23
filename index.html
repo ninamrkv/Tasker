@@ -55,7 +55,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .day-col{border-right:1px solid var(--gray-200);display:flex;flex-direction:column;min-width:0;grid-row:3}
 .day-hdr{padding:8px 8px 8px;border-bottom:1px solid var(--gray-200);border-right:1px solid var(--gray-200);display:flex;flex-direction:column;gap:2px;background:#fff;position:relative;grid-row:1;min-height:72px}
 .day-hdr.today-hdr{background:#fef2f2}
-.day-vac-row{grid-row:2;display:flex;flex-direction:column;gap:2px;padding:3px 0 2px;min-height:0;background:#fff;border-bottom:1px solid var(--gray-200)}
+.day-vac-row{grid-row:2;display:flex;flex-direction:column;gap:2px;min-height:0;background:#fff}
 .d-name{font-size:9px;color:var(--gray-400);text-transform:uppercase;letter-spacing:.06em}
 .d-name.today-label{color:var(--red);font-weight:600}
 .d-num{font-size:13px;font-weight:500;color:var(--gray-600);line-height:1}
@@ -813,7 +813,7 @@ function renderWeekly(){
       <div class="d-reminders">${nonVacRems.map(r=>`<div class="d-reminder ${r.type}" title="${r.text}">${r.emoji||'📌'} ${r.text}</div>`).join('')}</div>
     </div>`;
     // Row 2: vacation bar cells — NO border-right between them so bars connect seamlessly
-    vacHtml+=`<div class="day-vac-row">${vacBars}</div>`;
+    vacHtml+=`<div class="day-vac-row"${vacBars?' style="padding:3px 0 2px"':''}>${vacBars}</div>`;
     const tasks=state.tasks.filter(t=>{
       if(t.workspaceId!==state.activeWs) return false;
       // Done/rolled tasks: only on their actual scheduled date
@@ -1241,6 +1241,7 @@ function openAddTask(date,dirId){
       <select class="qa-select" id="qa-date" style="flex:1">${dateOptions}</select>
     </div>
     <div class="qa-row">${recurSelectHtml('','qa-recur')}</div>
+    <input class="qa-input" id="qa-assignee" placeholder="Assignee (optional)..." style="margin-top:2px">
     <div class="qa-actions">
       <button class="btn-cancel" onclick="closeOverlay()">Cancel</button>
       <button class="btn-save" onclick="saveNewTask()">Add task</button>
@@ -1258,7 +1259,7 @@ function saveNewTask(){
     type:document.getElementById('qa-type')?.value||'one-time',
     status:'todo',
     scheduledDate:document.getElementById('qa-date')?.value||null,
-    deadline:null,assignee:'',notes:'',emoji:'',archivedOn:null,recurDays:null,
+    deadline:null,assignee:document.getElementById('qa-assignee')?.value?.trim()||'',notes:'',emoji:'',archivedOn:null,recurDays:null,
     recurrence:document.getElementById('qa-recur')?.value||null,
     workspaceId:state.activeWs,createdAt:Date.now(),
   };
