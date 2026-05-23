@@ -25,7 +25,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .sb-bottom{padding:10px;border-top:1px solid var(--gray-200);flex-shrink:0}
 .sb-user{display:flex;align-items:center;gap:8px;padding:4px;border-radius:6px;cursor:pointer}
 .sb-user:hover{background:#e9eaec}
-.sb-avatar{width:26px;height:26px;border-radius:50%;background:#dbeafe;font-size:15px;display:flex;align-items:center;justify-content:center;flex-shrink:0;cursor:pointer}
+.sb-avatar{font-size:20px;flex-shrink:0;cursor:pointer;line-height:1;user-select:none;transition:transform .1s}
+.sb-avatar:hover{transform:scale(1.15)}
 .sb-uname{font-size:12px;color:var(--gray-900);white-space:nowrap}
 .main{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0;background:#fff}
 .topbar{padding:0 16px;border-bottom:1px solid var(--gray-200);display:flex;align-items:center;flex-shrink:0;gap:2px}
@@ -228,6 +229,11 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .url-chip .chip-x:hover{color:#1d4ed8}
 /* lists section vertical */
 .lists-grid-v{display:flex;flex-direction:column;gap:10px}
+/* clock widget */
+.clock-widget{display:flex;gap:20px;align-items:flex-end;flex-shrink:0}
+.clock-entry{display:flex;flex-direction:column;align-items:flex-start;gap:1px}
+.clock-time{font-size:22px;font-variant-numeric:tabular-nums;font-weight:300;color:var(--gray-900);letter-spacing:-.01em;line-height:1}
+.clock-tz{font-size:10px;color:var(--gray-400);text-transform:uppercase;letter-spacing:.08em;font-weight:400}
 ::-webkit-scrollbar{width:4px;height:4px}
 ::-webkit-scrollbar-track{background:transparent}
 ::-webkit-scrollbar-thumb{background:var(--gray-300);border-radius:4px}
@@ -297,7 +303,7 @@ let state={
   activeWs:'ws1',activeTab:'weekly',sidebarOpen:true,weekOffset:0,
   directions:DEFAULT_DIRECTIONS,tasks:[],reminders:[],lists:[],
   wsNotes:{},
-  userName:'Nina',userEmoji:'👤',weather:{},userCity:null,
+  userName:'nina',userEmoji:'👤',weather:{},userCity:null,
 };
 
 function save(){
@@ -318,6 +324,8 @@ function load(){
   // Reset if showing a fully past week
   if(getWeekDates(state.weekOffset)[6]<today()) state.weekOffset=0;
   if(!state.userEmoji) state.userEmoji='👤';
+  // Lowercase migration
+  if(state.userName==='Nina') state.userName='nina';
 }
 
 function cleanupArchive(){
@@ -443,12 +451,30 @@ function getDomain(url){try{return new URL(url).hostname.replace(/^www\./,'');}c
 function isUrl(s){try{return/^https?:\/\//i.test(s)&&!!new URL(s);}catch(e){return false;}}
 function isEmail(s){return/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s.trim());}
 
+function getServiceIcon(url){
+  try{
+    const u=new URL(url),h=u.hostname,p=u.pathname;
+    const G='https://ssl.gstatic.com/images/branding/product/2x/';
+    if(h.includes('docs.google.com')){
+      if(p.startsWith('/spreadsheets')) return G+'sheets_2020q4_48dp.png';
+      if(p.startsWith('/presentation')) return G+'slides_2020q4_48dp.png';
+      if(p.startsWith('/forms'))        return G+'forms_2020q4_48dp.png';
+      return G+'docs_2020q4_48dp.png';
+    }
+    if(h.includes('drive.google.com'))    return G+'drive_2020q4_48dp.png';
+    if(h.includes('mail.google.com')||h.includes('gmail.com')) return G+'gmail_2020q4_48dp.png';
+    if(h.includes('calendar.google.com')) return G+'calendar_2020q4_48dp.png';
+    if(h.includes('meet.google.com'))     return G+'meet_2020q4_48dp.png';
+    return`https://www.google.com/s2/favicons?domain=${encodeURIComponent(h)}&sz=32`;
+  }catch(e){return`https://www.google.com/s2/favicons?domain=${encodeURIComponent(getDomain(url))}&sz=32`;}
+}
+
 function makeChipHtml(url, label){
   const domain=getDomain(url);
   const display=escHtml(label&&label.trim()?label.trim():domain);
-  const fav=`https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=32`;
+  const icon=getServiceIcon(url);
   return`<a href="${escAttr(url)}" target="_blank" rel="noopener" class="url-chip" contenteditable="false">`+
-    `<img src="${fav}" onerror="this.style.display='none'"><span>${display}</span>`+
+    `<img src="${icon}" onerror="this.src='https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=32'"><span>${display}</span>`+
     `<button class="chip-x" onclick="event.preventDefault();event.stopPropagation();this.closest('.url-chip').remove();saveNoteContent(currentWsId())">×</button>`+
     `</a>`;
 }
@@ -618,8 +644,18 @@ function renderWeekly(){
   const dates=getWeekDates(state.weekOffset),td=today();
   const todayIdx=dates.indexOf(td);
   const cols=dates.map((_,i)=>i===todayIdx&&todayIdx>=0?'1.35fr':'.7fr').join(' ');
-  let html=`<div class="page-pad" style="padding-bottom:8px">
+  let html=`<div class="page-pad" style="padding-bottom:8px;display:flex;align-items:flex-end;justify-content:space-between;gap:16px">
     <div class="page-title" contenteditable="true" onblur="renameWs(this.textContent)">${ws.name}</div>
+    <div class="clock-widget" id="clock-widget">
+      <div class="clock-entry">
+        <span class="clock-time" id="clk-ua">--:--</span>
+        <span class="clock-tz">Kyiv</span>
+      </div>
+      <div class="clock-entry">
+        <span class="clock-time" id="clk-local">--:--</span>
+        <span class="clock-tz" id="clk-local-lbl">${state.userCity||'Local'}</span>
+      </div>
+    </div>
   </div>
   <div class="week-bar">
     <button class="nav-btn" onclick="changeWeek(-1)">‹</button>
@@ -661,7 +697,7 @@ function renderWeekly(){
     <div class="below-col">${renderNotesSection(state.activeWs)}</div>
   </div>`;
   document.getElementById('content').innerHTML=html;
-  setTimeout(()=>setupNotesEditor(state.activeWs),0);
+  setTimeout(()=>{setupNotesEditor(state.activeWs);startClock();},0);
 }
 
 function renderTaskCard(t){
@@ -787,15 +823,22 @@ function renderArchive(){
 }
 
 // ── LISTS ─────────────────────────────────────────────────────────────────────
+function renderListItem(listId, item){
+  return`<div class="list-item" id="li-${item.id}">
+    <div class="li-cb ${item.done?'li-done':''}" onclick="toggleListItem('${listId}','${item.id}')"></div>
+    <span class="li-text ${item.done?'li-done-text':''}" contenteditable="true"
+      onblur="editListItem('${listId}','${item.id}',this.textContent)"
+      onkeydown="liKeyDown(event,'${listId}','${item.id}')"
+      onpaste="liPaste(event,'${listId}','${item.id}')"
+    >${escHtml(item.text)}</span>
+  </div>`;
+}
+
 function renderListCard(l){
-  return`<div class="list-card">
+  return`<div class="list-card" id="lc-${l.id}">
     <div class="list-card-title" onclick="renameList('${l.id}')">${l.emoji||'📝'} ${escHtml(l.title)}</div>
-    ${l.items.map(item=>`<div class="list-item">
-      <div class="li-cb ${item.done?'li-done':''}" onclick="toggleListItem('${l.id}','${item.id}')"></div>
-      <span class="li-text ${item.done?'li-done-text':''}" contenteditable="true"
-        onblur="editListItem('${l.id}','${item.id}',this.textContent)">${escHtml(item.text)}</span>
-    </div>`).join('')}
-    <div class="li-add" onclick="addListItem('${l.id}')"><i class="ti ti-plus" style="font-size:10px"></i> Add item</div>
+    <div id="li-wrap-${l.id}">${l.items.map(item=>renderListItem(l.id,item)).join('')}</div>
+    <div class="li-add" onclick="addListItemInline('${l.id}',null)"><i class="ti ti-plus" style="font-size:10px"></i> Add item</div>
   </div>`;
 }
 
@@ -815,12 +858,96 @@ function renameList(id){
   }});
 }
 
-function addListItem(listId){
+function addListItemInline(listId, afterItemId){
   const l=state.lists.find(x=>x.id===listId);if(!l)return;
-  showMiniModal({title:'Add item',fields:[{id:'text',placeholder:'Item text...'}],submitLabel:'Add',onSubmit:vals=>{
-    const text=vals.text.trim();if(!text)return;
-    l.items.push({id:uid(),text,done:false});save();render();
-  }});
+  const item={id:uid(),text:'',done:false};
+  if(afterItemId){
+    const idx=l.items.findIndex(x=>x.id===afterItemId);
+    if(idx>=0)l.items.splice(idx+1,0,item);else l.items.push(item);
+  }else{l.items.push(item);}
+  save();
+  const wrap=document.getElementById('li-wrap-'+listId);
+  if(!wrap){render();return;}
+  const tmp=document.createElement('div');
+  tmp.innerHTML=renderListItem(listId,item);
+  const itemEl=tmp.firstElementChild;
+  if(afterItemId){
+    const afterEl=document.getElementById('li-'+afterItemId);
+    if(afterEl&&afterEl.parentNode===wrap)wrap.insertBefore(itemEl,afterEl.nextSibling);
+    else wrap.appendChild(itemEl);
+  }else{wrap.appendChild(itemEl);}
+  const span=itemEl.querySelector('.li-text');
+  if(span){span.focus();placeCaretAtEnd(span);}
+}
+
+function liKeyDown(event, listId, itemId){
+  if(event.key==='Enter'){
+    event.preventDefault();
+    const span=event.target;
+    const l=state.lists.find(x=>x.id===listId);
+    const item=l?.items.find(x=>x.id===itemId);
+    if(item)item.text=span.textContent.trim();
+    save();
+    addListItemInline(listId,itemId);
+  }else if(event.key==='Backspace'){
+    const span=event.target;
+    if(span.textContent.trim()===''){
+      event.preventDefault();
+      removeListItemEl(listId,itemId);
+    }
+  }
+}
+
+function liPaste(event, listId, itemId){
+  event.preventDefault();
+  const text=(event.clipboardData||window.clipboardData).getData('text/plain');
+  const lines=text.split(/\r?\n/).filter(s=>s.trim());
+  if(lines.length<=1){document.execCommand('insertText',false,text);return;}
+  const l=state.lists.find(x=>x.id===listId);if(!l)return;
+  const span=event.target;
+  const existing=span.textContent||'';
+  const item=l.items.find(x=>x.id===itemId);
+  if(item){item.text=(existing+lines[0]).trim();}
+  span.textContent=(existing+lines[0]).trim();
+  save();
+  let afterId=itemId;
+  for(let i=1;i<lines.length;i++){
+    const newItem={id:uid(),text:lines[i].trim(),done:false};
+    const idx=l.items.findIndex(x=>x.id===afterId);
+    l.items.splice(idx+1,0,newItem);save();
+    const wrap=document.getElementById('li-wrap-'+listId);
+    if(wrap){
+      const tmp=document.createElement('div');
+      tmp.innerHTML=renderListItem(listId,newItem);
+      const itemEl=tmp.firstElementChild;
+      const afterEl=document.getElementById('li-'+afterId);
+      if(afterEl&&afterEl.parentNode===wrap)wrap.insertBefore(itemEl,afterEl.nextSibling);
+      else wrap.appendChild(itemEl);
+    }
+    afterId=newItem.id;
+  }
+}
+
+function removeListItemEl(listId, itemId){
+  const l=state.lists.find(x=>x.id===listId);if(!l)return;
+  const idx=l.items.findIndex(x=>x.id===itemId);
+  const prevItem=idx>0?l.items[idx-1]:null;
+  l.items.splice(idx,1);save();
+  const el=document.getElementById('li-'+itemId);
+  if(el){
+    if(prevItem){
+      const prevSpan=document.getElementById('li-'+prevItem.id)?.querySelector('.li-text');
+      if(prevSpan){prevSpan.focus();placeCaretAtEnd(prevSpan);}
+    }
+    el.remove();
+  }
+}
+
+function placeCaretAtEnd(el){
+  el.focus();
+  const range=document.createRange();
+  range.selectNodeContents(el);range.collapse(false);
+  const sel=window.getSelection();sel.removeAllRanges();sel.addRange(range);
 }
 
 function toggleListItem(listId,itemId){
@@ -999,7 +1126,12 @@ function changeTaskEmoji(id){
 }
 
 function pickUserEmoji(){
-  showEmojiPicker(em=>{state.userEmoji=em;save();renderSidebar();});
+  showMiniModal({title:'Change emoji',fields:[
+    {id:'emoji',label:'Paste or type any emoji',value:state.userEmoji||'',placeholder:'e.g. 🌸 or paste from keyboard'},
+  ],submitLabel:'Set',onSubmit:vals=>{
+    const em=vals.emoji.trim();if(!em)return;
+    state.userEmoji=em;save();renderSidebar();
+  }});
 }
 
 // ── REMINDERS ─────────────────────────────────────────────────────────────────
@@ -1150,6 +1282,24 @@ function renameWsSidebar(id){
   showMiniModal({title:'Rename workspace',fields:[{id:'name',value:ws.name,placeholder:'Workspace name...'}],submitLabel:'Save',onSubmit:vals=>{
     ws.name=vals.name.trim()||ws.name;save();render();
   }});
+}
+
+// ── CLOCK ─────────────────────────────────────────────────────────────────────
+let _clockTimer=null;
+function startClock(){
+  clearInterval(_clockTimer);
+  function tick(){
+    const now=new Date();
+    const uaTime=now.toLocaleTimeString('uk-UA',{hour:'2-digit',minute:'2-digit',timeZone:'Europe/Kiev'});
+    const localTime=now.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
+    const ua=document.getElementById('clk-ua'),loc=document.getElementById('clk-local');
+    if(ua)ua.textContent=uaTime;
+    if(loc)loc.textContent=localTime;
+    const lbl=document.getElementById('clk-local-lbl');
+    if(lbl&&state.userCity)lbl.textContent=state.userCity;
+  }
+  tick();
+  _clockTimer=setInterval(tick,1000);
 }
 
 // ── NAVIGATION ────────────────────────────────────────────────────────────────
