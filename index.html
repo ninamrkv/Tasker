@@ -825,6 +825,13 @@ function renderWeekly(){
       if(!r||!t.scheduledDate||t.scheduledDate>date) return false;
       return taskOccursOn(t,date);
     }).sort((a,b)=>{
+      // Tasks without a manual sortOrder from pinned directions always go first
+      const aPinnedIdx=a.sortOrder==null?PINNED_DIR_ORDER.indexOf(dirById(a.directionId)?.name??''):-1;
+      const bPinnedIdx=b.sortOrder==null?PINNED_DIR_ORDER.indexOf(dirById(b.directionId)?.name??''):-1;
+      if(aPinnedIdx>=0&&bPinnedIdx>=0) return aPinnedIdx-bPinnedIdx;
+      if(aPinnedIdx>=0) return -1;
+      if(bPinnedIdx>=0) return 1;
+      // Normal sort: manual order then priority
       const ao=a.sortOrder??Infinity,bo=b.sortOrder??Infinity;
       if(ao!==bo)return ao-bo;
       const p={urgent:0,high:1,medium:2,low:3};
@@ -854,6 +861,7 @@ function renderWeekly(){
   setTimeout(()=>{setupNotesEditor(state.activeWs);startClock();},0);
 }
 
+const PINNED_DIR_ORDER=['Cleaning','Food','Gym','English','Other'];
 const ASSIGNEE_COLORS=['#6366f1','#3b82f6','#22c55e','#f97316','#a855f7','#ec4899','#14b8a6','#f59e0b','#ef4444','#0ea5e9'];
 function assigneeColor(name){return ASSIGNEE_COLORS[(name.toUpperCase().charCodeAt(0)||65)%ASSIGNEE_COLORS.length];}
 
