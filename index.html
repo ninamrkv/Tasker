@@ -54,7 +54,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .cal-grid{display:grid}
 .day-col{border-right:1px solid var(--gray-200);display:flex;flex-direction:column;min-width:0}
 .day-col:last-child{border-right:none}
-.day-hdr{height:72px;padding:7px 8px 5px;border-bottom:1px solid var(--gray-200);display:flex;flex-direction:column;gap:2px;flex-shrink:0;background:#fff}
+.day-hdr{min-height:62px;padding:7px 8px 5px;border-bottom:1px solid var(--gray-200);display:flex;flex-direction:column;gap:2px;flex-shrink:0;background:#fff}
 .day-hdr.today-hdr{background:#fef2f2}
 .d-name{font-size:9px;color:var(--gray-400);text-transform:uppercase;letter-spacing:.06em}
 .d-name.today-label{color:var(--red);font-weight:600}
@@ -63,6 +63,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .d-weather{font-size:9px;color:var(--gray-400);display:flex;align-items:center;gap:2px;white-space:nowrap}
 .d-weather.today-w{color:var(--gray-600)}
 .d-reminders{display:flex;flex-direction:column;gap:1px}
+.d-vac-bar{margin:2px -9px 0;height:15px;font-size:8px;color:#1e40af;line-height:15px;padding:0 4px;white-space:nowrap;overflow:hidden;background:#bfdbfe;cursor:default}
+.d-vac-bar.vac-first{border-radius:4px 0 0 4px;margin-left:-4px}
+.d-vac-bar.vac-last{border-radius:0 4px 4px 0;margin-right:-4px}
+.d-vac-bar.vac-solo{border-radius:4px;margin-left:-4px;margin-right:-4px}
 .d-reminder{font-size:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.4}
 .d-reminder.bday{color:#be185d}
 .d-reminder.holiday{color:#0369a1}
@@ -747,6 +751,16 @@ function renderWeekly(){
   dates.forEach(date=>{
     const isToday=date===td,dow=dayOfWeek(date);
     const w=state.weather[date],rems=state.reminders.filter(r=>remMatchesDate(r,date));
+    const vacRems=rems.filter(r=>r.type==='vacation');
+    const nonVacRems=rems.filter(r=>r.type!=='vacation');
+    const vacBars=vacRems.map(v=>{
+      const s=v.startDate||v.date,e=v.endDate||v.date;
+      const isFirst=date===s||(date===dates[0]&&s<dates[0]);
+      const isLast=date===e||(date===dates[6]&&e>dates[6]);
+      const cls=isFirst&&isLast?'vac-solo':isFirst?'vac-first':isLast?'vac-last':'';
+      const showLabel=date===s||(date===dates[0]&&s<dates[0]);
+      return`<div class="d-vac-bar ${cls}">${showLabel?escHtml(v.text):''}</div>`;
+    }).join('');
     const tasks=state.tasks.filter(t=>t.scheduledDate===date&&t.workspaceId===state.activeWs)
       .sort((a,b)=>{const p={urgent:0,high:1,medium:2,low:3};return(p[a.type==='urgent'?'urgent':a.priority]||4)-(p[b.type==='urgent'?'urgent':b.priority]||4);});
     html+=`<div class="day-col" id="dc-${date}">
@@ -754,7 +768,8 @@ function renderWeekly(){
         <div class="d-name ${isToday?'today-label':''}">${isToday?'Today · ':''}${DAY_NAMES[dow]}</div>
         <div class="d-num ${isToday?'today-circle':''}">${date.slice(8)}</div>
         <div class="d-weather ${isToday?'today-w':''}">${w?`${w.icon} ${w.temp}${isToday&&state.userCity?' · '+state.userCity:''}`:''}</div>
-        <div class="d-reminders">${rems.map(r=>`<div class="d-reminder ${r.type}" title="${r.text}">${r.emoji||'📌'} ${r.text}</div>`).join('')}</div>
+        <div class="d-reminders">${nonVacRems.map(r=>`<div class="d-reminder ${r.type}" title="${r.text}">${r.emoji||'📌'} ${r.text}</div>`).join('')}</div>
+        ${vacBars}
       </div>
       <div class="day-tasks">${tasks.map(t=>renderTaskCard(t)).join('')}</div>
       <div class="add-task-row">
@@ -1327,14 +1342,23 @@ function pickUserEmoji(){
 
 // ── REMINDERS ─────────────────────────────────────────────────────────────────
 function remMatchesDate(r,date){
+  if(r.type==='vacation'){
+    const s=r.startDate||r.date,e=r.endDate||r.date;
+    return date>=s&&date<=e;
+  }
   if(!r.date)return false;
   const isYearly=r.yearly||r.recur==='yearly';
   const isMonthly=r.recur==='monthly';
-  if(isYearly)  return r.date.slice(5)===date.slice(5);   // MM-DD match
-  if(isMonthly) return r.date.slice(8)===date.slice(8);   // DD match
+  if(isYearly)  return r.date.slice(5)===date.slice(5);
+  if(isMonthly) return r.date.slice(8)===date.slice(8);
   return r.date===date;
 }
 function fmtRemDate(r){
+  if(r.type==='vacation'){
+    const s=r.startDate||r.date,e=r.endDate||r.date;
+    const fd=d=>{const x=new Date(d+'T12:00:00');return String(x.getDate()).padStart(2,'0')+' '+x.toLocaleDateString('en-GB',{month:'long'});};
+    return s===e?fd(s):fd(s)+' – '+fd(e);
+  }
   if(!r||!r.date)return'';
   const d=new Date(r.date+'T12:00:00');
   const day=String(d.getDate()).padStart(2,'0');
@@ -1346,11 +1370,12 @@ function fmtRemDate(r){
   return`${day} ${month} ${d.getFullYear()}`;
 }
 function remRecurLabel(r){
+  if(r.type==='vacation') return'<span style="font-size:9px;color:var(--gray-400);margin-left:4px">🏖️</span>';
   if(r.yearly||r.recur==='yearly')  return'<span style="font-size:9px;color:var(--gray-400);margin-left:4px">↺ yearly</span>';
   if(r.recur==='monthly') return'<span style="font-size:9px;color:var(--gray-400);margin-left:4px">↺ monthly</span>';
   return'';
 }
-function remAutoEmoji(type){return type==='bday'?'🎂':type==='holiday'?'🗓️':'📌';}
+function remAutoEmoji(type){return type==='bday'?'🎂':type==='holiday'?'🗓️':type==='vacation'?'🏖️':'📌';}
 
 function openReminders(){renderRemindersPanel();}
 
@@ -1377,14 +1402,19 @@ function renderRemindersPanel(){
     <div class="rem-add-form">
       <div style="font-size:11px;font-weight:500;color:var(--gray-700);margin-bottom:6px">Add reminder</div>
       <div class="rem-add-row">
-        <input class="rem-input" style="width:48px" id="rem-emoji" placeholder="📌" title="Emoji (auto-set for birthday/holiday)">
+        <input class="rem-input" style="width:48px" id="rem-emoji" placeholder="📌">
         <input class="rem-input" id="rem-text" placeholder="Name, event, note...">
-        <input class="rem-input" style="width:140px" id="rem-date" type="date" value="${today()}">
+        <input class="rem-input" style="width:130px" id="rem-date" type="date" value="${today()}">
+        <span id="rem-date-end-wrap" style="display:none;align-items:center;gap:4px">
+          <span style="font-size:10px;color:var(--gray-400)">–</span>
+          <input class="rem-input" style="width:130px" id="rem-date-end" type="date" value="${today()}">
+        </span>
       </div>
       <div class="rem-add-row" style="align-items:center;gap:8px">
         <select class="qa-select" id="rem-type" style="flex:1" onchange="onRemTypeChange(this.value)">
           <option value="bday">Birthday 🎂</option>
           <option value="holiday">Holiday 🗓️</option>
+          <option value="vacation">Vacation 🏖️</option>
           <option value="custom" selected>Custom</option>
         </select>
         <div id="rem-recur-wrap" style="flex:1">
@@ -1408,12 +1438,19 @@ function renderRemindersPanel(){
 function onRemTypeChange(val){
   const rw=document.getElementById('rem-recur-wrap');
   const ei=document.getElementById('rem-emoji');
+  const ew=document.getElementById('rem-date-end-wrap');
   if(!rw)return;
-  if(val==='bday'||val==='holiday'){
+  if(val==='vacation'){
     rw.style.display='none';
+    if(ew)ew.style.display='flex';
+    if(ei){ei.value='🏖️';ei.style.opacity='.5';}
+  }else if(val==='bday'||val==='holiday'){
+    rw.style.display='none';
+    if(ew)ew.style.display='none';
     if(ei){ei.value=remAutoEmoji(val);ei.style.opacity='.5';}
   }else{
     rw.style.display='';
+    if(ew)ew.style.display='none';
     if(ei){ei.value='';ei.style.opacity='';}
   }
 }
@@ -1423,6 +1460,11 @@ function addReminder(){
   const date=document.getElementById('rem-date')?.value;
   const type=document.getElementById('rem-type')?.value||'custom';
   if(!text||!date)return;
+  if(type==='vacation'){
+    const endDate=document.getElementById('rem-date-end')?.value||date;
+    state.reminders.push({id:uid(),text,date,startDate:date,endDate,emoji:'🏖️',type,recur:'once',yearly:false});
+    save();renderRemindersPanel();return;
+  }
   const isBday=type==='bday',isHoliday=type==='holiday';
   const emoji=isBday?'🎂':isHoliday?'🗓️':(document.getElementById('rem-emoji')?.value?.trim()||'📌');
   const recur=isBday||isHoliday?'yearly':(document.getElementById('rem-recur')?.value||'once');
@@ -1465,9 +1507,12 @@ function importBulkReminders(){
       }
     }
     if(!date||!text)return;
+    // Use the dropdown type if explicitly chosen (not 'custom'), else auto-detect
+    const forcedType=document.getElementById('rem-type')?.value;
     const tl=text.toLowerCase();
-    const type=tl.includes('birthday')||tl.includes('bday')?'bday':
-                tl.includes('holiday')||tl.includes('day of')||tl.includes('constitution')||tl.includes('independence')?'holiday':'custom';
+    const autoType=tl.includes('birthday')||tl.includes('bday')?'bday':
+                   tl.includes('holiday')||tl.includes('day of')||tl.includes('constitution')||tl.includes('independence')?'holiday':'custom';
+    const type=(forcedType&&forcedType!=='custom')?forcedType:autoType;
     const emoji=remAutoEmoji(type);
     const recur=type==='bday'||type==='holiday'?'yearly':'once';
     state.reminders.push({id:uid(),text,date,emoji,type,recur,yearly:recur==='yearly'});
