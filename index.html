@@ -52,9 +52,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .week-label{font-size:12px;color:var(--gray-600);font-weight:500}
 .cal-wrap{margin:0 24px 24px;border:1px solid var(--gray-200);border-radius:10px;overflow:hidden}
 .cal-grid{display:grid}
-.day-col{border-right:1px solid var(--gray-200);display:flex;flex-direction:column;min-width:0;grid-row:2}
-.day-hdr{padding:8px 8px 8px;border-bottom:1px solid var(--gray-200);border-right:1px solid var(--gray-200);display:flex;flex-direction:column;gap:2px;background:#fff;position:relative;overflow:visible;grid-row:1;min-height:72px}
+.day-col{border-right:1px solid var(--gray-200);display:flex;flex-direction:column;min-width:0;grid-row:3}
+.day-hdr{padding:8px 8px 8px;border-bottom:1px solid var(--gray-200);border-right:1px solid var(--gray-200);display:flex;flex-direction:column;gap:2px;background:#fff;position:relative;grid-row:1;min-height:72px}
 .day-hdr.today-hdr{background:#fef2f2}
+.day-vac-row{grid-row:2;display:flex;flex-direction:column;gap:2px;padding:3px 0 2px;min-height:0;background:#fff;border-bottom:1px solid var(--gray-200)}
 .d-name{font-size:9px;color:var(--gray-400);text-transform:uppercase;letter-spacing:.06em}
 .d-name.today-label{color:var(--red);font-weight:600}
 .d-num{font-size:13px;font-weight:500;color:var(--gray-600);line-height:1}
@@ -62,16 +63,16 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .d-weather{font-size:9px;color:var(--gray-400);display:flex;align-items:center;gap:2px;white-space:nowrap}
 .d-weather.today-w{color:var(--gray-600)}
 .d-reminders{display:flex;flex-direction:column;gap:1px}
-.d-vac-bar{height:16px;font-size:8px;color:#3b82f6;line-height:16px;padding:0 5px;white-space:nowrap;overflow:hidden;background:#fff;border-top:1.5px solid #93c5fd;border-bottom:1.5px solid #93c5fd;cursor:default;flex-shrink:0;margin:3px -1px 0 0;position:relative;z-index:2}
-.d-vac-bar.vac-first{border-left:1.5px solid #93c5fd;border-radius:4px 0 0 4px;margin-left:4px}
-.d-vac-bar.vac-last{border-right:1.5px solid #93c5fd;border-radius:0 4px 4px 0;margin-right:4px}
-.d-vac-bar.vac-solo{border:1.5px solid #93c5fd;border-radius:4px;margin-left:4px;margin-right:4px}
+.d-vac-bar{height:16px;font-size:8px;color:#3b82f6;line-height:16px;padding:0 5px;white-space:nowrap;overflow:hidden;background:#fff;border-top:1.5px solid #93c5fd;border-bottom:1.5px solid #93c5fd;cursor:default;flex-shrink:0;margin:0}
+.d-vac-bar.vac-first{border-left:1.5px solid #93c5fd;border-radius:4px 0 0 4px;margin-left:5px}
+.d-vac-bar.vac-last{border-right:1.5px solid #93c5fd;border-radius:0 4px 4px 0;margin-right:5px}
+.d-vac-bar.vac-solo{border:1.5px solid #93c5fd;border-radius:4px;margin:0 5px}
 .d-reminder{font-size:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.4}
 .d-reminder.bday{color:#be185d}
 .d-reminder.holiday{color:#0369a1}
 .d-reminder.custom{color:var(--gray-600)}
 .day-tasks{padding:4px;display:flex;flex-direction:column;gap:3px;background:var(--gray-50);flex:1;overflow-y:auto;min-height:120px}
-.tc{background:#fff;border:1px solid var(--gray-200);border-left-width:3px;border-radius:5px;padding:4px 6px 4px 5px;cursor:grab;flex-shrink:0;display:flex;align-items:flex-start;gap:4px;transition:background .1s,opacity .15s}
+.tc{background:#fff;border:1px solid var(--gray-200);border-left-width:3px;border-radius:5px;padding:4px 6px 4px 5px;cursor:grab;flex-shrink:0;display:flex;align-items:flex-start;gap:4px;transition:background .1s,opacity .15s;position:relative}
 .tc:hover{background:var(--gray-50)}
 .tc.dragging{opacity:.35;cursor:grabbing}
 .day-tasks.drag-over{background:rgba(59,130,246,.06);outline:2px dashed var(--blue);outline-offset:-3px}
@@ -85,6 +86,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .tc-meta{display:flex;align-items:center;gap:3px;margin-top:3px}
 .tc-deadline{font-size:8.5px;color:var(--gray-400)}
 .tc-deadline.overdue{color:#dc2626}
+.tc-assignee{position:absolute;top:5px;right:5px;width:15px;height:15px;border-radius:50%;color:#fff;font-size:7.5px;font-weight:700;display:flex;align-items:center;justify-content:center;text-transform:uppercase;flex-shrink:0;cursor:default;user-select:none}
 .tc.is-done{opacity:.35}
 .tc.is-done .tc-name{text-decoration:line-through}
 .tc.rolled .tc-dir::before{content:'↩ '}
@@ -786,14 +788,15 @@ function renderWeekly(){
   </div>
   <div class="cal-wrap"><div class="cal-grid" style="grid-template-columns:${cols}">`;
 
-  // ── Two-pass render: all headers first (row 1), then all task cols (row 2)
-  // This lets CSS Grid auto-equalize all header heights across columns.
-  let hdrHtml='',colHtml='';
+  // ── Three-pass render: headers (row 1), vacation bars (row 2), task cols (row 3)
+  // Row 2 has no borders between cells so vacation bars connect seamlessly.
+  let hdrHtml='',vacHtml='',colHtml='';
   dates.forEach((date,idx)=>{
     const isToday=date===td,dow=dayOfWeek(date);
     const w=state.weather[date],rems=state.reminders.filter(r=>remMatchesDate(r,date));
     const vacRems=rems.filter(r=>r.type==='vacation');
     const nonVacRems=rems.filter(r=>r.type!=='vacation');
+    // Vacation bars go in their own grid row (row 2) so they span columns without being cut by borders
     const vacBars=vacRems.map(v=>{
       const s=v.startDate||v.date,e=v.endDate||v.date;
       const isFirst=date===s||(date===dates[0]&&s<dates[0]);
@@ -808,8 +811,9 @@ function renderWeekly(){
       <div class="d-num ${isToday?'today-circle':''}">${date.slice(8)}</div>
       <div class="d-weather ${isToday?'today-w':''}">${w?`${w.icon} ${w.temp}${isToday&&state.userCity?' · '+state.userCity:''}`:''}</div>
       <div class="d-reminders">${nonVacRems.map(r=>`<div class="d-reminder ${r.type}" title="${r.text}">${r.emoji||'📌'} ${r.text}</div>`).join('')}</div>
-      ${vacBars}
     </div>`;
+    // Row 2: vacation bar cells — NO border-right between them so bars connect seamlessly
+    vacHtml+=`<div class="day-vac-row">${vacBars}</div>`;
     const tasks=state.tasks.filter(t=>{
       if(t.workspaceId!==state.activeWs) return false;
       // Done/rolled tasks: only on their actual scheduled date
@@ -833,7 +837,7 @@ function renderWeekly(){
       </div>
     </div>`;
   });
-  html+=hdrHtml+colHtml+`</div></div>`;
+  html+=hdrHtml+vacHtml+colHtml+`</div></div>`;
 
   const lists=state.lists.filter(l=>l.workspaceId===state.activeWs);
   html+=`<div class="below-cal-grid">
@@ -850,17 +854,24 @@ function renderWeekly(){
   setTimeout(()=>{setupNotesEditor(state.activeWs);startClock();},0);
 }
 
+const ASSIGNEE_COLORS=['#6366f1','#3b82f6','#22c55e','#f97316','#a855f7','#ec4899','#14b8a6','#f59e0b','#ef4444','#0ea5e9'];
+function assigneeColor(name){return ASSIGNEE_COLORS[(name.toUpperCase().charCodeAt(0)||65)%ASSIGNEE_COLORS.length];}
+
 function renderTaskCard(t){
   const dir=dirById(t.directionId),isDone=t.status==='done',isRolled=t.status==='rolled';
   const dl=t.deadline&&t.deadline<today()&&!isDone
     ?`<span class="tc-deadline overdue">${fmt(t.deadline)}</span>`
     :t.deadline?`<span class="tc-deadline">${fmt(t.deadline)}</span>`:'';
+  const avatar=t.assignee
+    ?`<div class="tc-assignee" style="background:${assigneeColor(t.assignee)}" title="${escHtml(t.assignee)}">${escHtml(t.assignee.trim()[0].toUpperCase())}</div>`
+    :'';
   return`<div class="tc ${isDone?'is-done':''} ${isRolled?'rolled':''}" style="border-left-color:${dir.color}" data-id="${t.id}" id="tc-${t.id}" draggable="true" ondragstart="taskDragStart(event,'${t.id}')" ondragend="taskDragEnd(event)" ondragover="tcDragOver(event,'${t.id}')" ondragleave="tcDragLeave(event)" ondrop="tcDrop(event,'${t.id}')">
+    ${avatar}
     <div class="tc-cb ${isDone?'done-cb':''}" onclick="toggleDone(event,'${t.id}')"></div>
     <div class="tc-body" onclick="openTaskPopup('${t.id}')">
       <div class="tc-dir" style="color:${dir.color}">${dir.name}</div>
       <div class="tc-name">${escHtml(t.name)}</div>
-      <div class="tc-meta">${t.priority?renderPriorityDot(t.priority):''}${dl}${t.assignee?`<span style="font-size:8.5px;color:var(--gray-400)">${escHtml(t.assignee)}</span>`:''}</div>
+      <div class="tc-meta">${t.priority?renderPriorityDot(t.priority):''}${dl}</div>
     </div>
   </div>`;
 }
