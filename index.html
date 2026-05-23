@@ -522,35 +522,42 @@ function insertCheckbox(){
 function addInlineLink(wsId){
   const sel=window.getSelection();
   const selectedText=sel?sel.toString().trim():'';
-  showMiniModal({title:'Add link',fields:[
-    {id:'url',placeholder:'https://docs.google.com/...'},
-    {id:'label',label:'Label'+(selectedText?` (selected: "${selectedText.slice(0,30)}")`:''),value:selectedText,placeholder:'Link text...'},
-  ],submitLabel:'Link',onSubmit:vals=>{
+  // Save cursor position before modal steals focus
+  const savedRange=sel&&sel.rangeCount>0?sel.getRangeAt(0).cloneRange():null;
+  showMiniModal({title:'Insert link chip',fields:[
+    {id:'url',placeholder:'https://...'},
+    {id:'label',label:'Label',value:selectedText,placeholder:'e.g. "WASH Report"'},
+  ],submitLabel:'Insert',onSubmit:vals=>{
     const url=vals.url.trim();if(!url)return;
     const fullUrl=isUrl(url)?url:'https://'+url;
-    const label=vals.label.trim()||getDomain(fullUrl);
-    // If text was selected, wrap it; otherwise insert new link
-    document.getElementById('notes-ed-'+wsId)?.focus();
-    if(selectedText){
-      document.execCommand('createLink',false,fullUrl);
-      document.querySelectorAll('#notes-ed-'+wsId+' a[href="'+fullUrl+'"]').forEach(a=>{
-        a.target='_blank';a.rel='noopener';
-      });
-    } else {
-      document.execCommand('insertHTML',false,`<a href="${fullUrl}" target="_blank" rel="noopener">${label}</a>`);
+    const editor=document.getElementById('notes-ed-'+wsId);
+    if(editor){
+      editor.focus();
+      if(savedRange){
+        const s=window.getSelection();s.removeAllRanges();s.addRange(savedRange);
+        // Delete selected text if any
+        if(selectedText){const r=s.getRangeAt(0);r.deleteContents();}
+      }
     }
+    document.execCommand('insertHTML',false,makeChipHtml(fullUrl,vals.label)+' ');
     saveNoteContent(wsId);
   }});
 }
 
 function insertUrlChipFromBtn(wsId){
+  const sel=window.getSelection();
+  const savedRange=sel&&sel.rangeCount>0?sel.getRangeAt(0).cloneRange():null;
   showMiniModal({title:'Insert link chip',fields:[
     {id:'url',placeholder:'https://docs.google.com/...'},
     {id:'label',label:'Name (shown on chip)',placeholder:'e.g. "WASH Report Q2"'},
   ],submitLabel:'Insert',onSubmit:vals=>{
     const url=vals.url.trim();if(!url)return;
     const fullUrl=isUrl(url)?url:'https://'+url;
-    document.getElementById('notes-ed-'+wsId)?.focus();
+    const editor=document.getElementById('notes-ed-'+wsId);
+    if(editor){
+      editor.focus();
+      if(savedRange){const s=window.getSelection();s.removeAllRanges();s.addRange(savedRange);}
+    }
     document.execCommand('insertHTML',false,makeChipHtml(fullUrl,vals.label)+' ');
     saveNoteContent(wsId);
   }});
