@@ -1399,7 +1399,7 @@ function renderRemindersPanel(){
       <div style="font-size:11px;font-weight:500;color:var(--gray-700);margin:12px 0 4px">
         Bulk import <span style="font-weight:400;color:var(--gray-400)">(one per line: YYYY-MM-DD text, or DD Month text)</span>
       </div>
-      <textarea class="bulk-textarea" id="rem-bulk" placeholder="2026-06-01 Mum's birthday&#10;2026-06-28 Constitution Day&#10;04 July Olesia's birthday"></textarea>
+      <textarea class="bulk-textarea" id="rem-bulk" placeholder="13-05 Sasha's birthday&#10;04-07 Olesia's birthday&#10;2026-06-28 Constitution Day"></textarea>
       <button class="btn-sm" onclick="importBulkReminders()" style="margin-top:6px;width:100%;justify-content:center"><i class="ti ti-upload" style="font-size:11px"></i> Import list</button>
     </div>
   </div>`);
@@ -1443,11 +1443,19 @@ function importBulkReminders(){
     const m1=line.match(/^(\d{4}-\d{2}-\d{2})\s+(.+)$/);
     if(m1){date=m1[1];text=m1[2].trim();}
     else{
-      // Try DD Month or Month DD
-      const m2=line.match(/^(\d{1,2})\s+([A-Za-z]+)\s+(.+)$/);
-      if(m2){
-        const mo=MONTHS[m2[2].toLowerCase()];
-        if(mo){const yr=new Date().getFullYear();date=`${yr}-${String(mo).padStart(2,'0')}-${String(m2[1]).padStart(2,'0')}`;text=m2[3].trim();}
+      // Try DD-MM (no year — yearly by default)
+      const m3=line.match(/^(\d{1,2})[.\-\/](\d{1,2})\s+(.+)$/);
+      if(m3){
+        const yr=new Date().getFullYear();
+        date=`${yr}-${String(m3[2]).padStart(2,'0')}-${String(m3[1]).padStart(2,'0')}`;
+        text=m3[3].trim();
+      } else {
+        // Try DD Month text
+        const m2=line.match(/^(\d{1,2})\s+([A-Za-z]+)\s+(.+)$/);
+        if(m2){
+          const mo=MONTHS[m2[2].toLowerCase()];
+          if(mo){const yr=new Date().getFullYear();date=`${yr}-${String(mo).padStart(2,'0')}-${String(m2[1]).padStart(2,'0')}`;text=m2[3].trim();}
+        }
       }
     }
     if(!date||!text)return;
@@ -1460,7 +1468,7 @@ function importBulkReminders(){
     added++;
   });
   if(added){save();showNotif(`Added ${added} reminder${added===1?'':'s'}`);renderRemindersPanel();}
-  else showNotif('No valid lines found. Use: YYYY-MM-DD Name or DD Month Name');
+  else showNotif('No valid lines. Use: DD-MM Name, YYYY-MM-DD Name, or DD Month Name');
 }
 
 function deleteReminder(id){
